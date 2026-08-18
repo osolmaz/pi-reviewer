@@ -176,6 +176,112 @@ describe("review budget controller", () => {
   });
 });
 
+describe("review budget finalization retry", () => {
+  it("retries a stalled final submission within the same grace period", async () => {
+    vi.useFakeTimers();
+    let submitted = false;
+    let finishInitial: () => void = () => undefined;
+    let promptCount = 0;
+    let aborts = 0;
+    const steers: string[] = [];
+    const never = new Promise<void>(() => undefined);
+    const review = runReviewWithBudget(
+      {
+        abort: () => {
+          aborts += 1;
+          finishInitial();
+          return Promise.resolve();
+        },
+        clearQueue: () => ({ steering: [], followUp: [] }),
+        prompt: () => {
+          promptCount += 1;
+          if (promptCount === 1) {
+            return new Promise<void>((resolve) => {
+              finishInitial = resolve;
+            });
+          }
+          if (promptCount === 2) return never;
+          submitted = true;
+          return Promise.resolve();
+        },
+        setActiveToolsByName: () => undefined,
+        steer: (message) => {
+          steers.push(message);
+          return Promise.resolve();
+        },
+        subscribe: () => () => undefined,
+      },
+      "Review",
+      { timeBudgetMs: 10_000, warningRemainingMs: [], finalizationGraceMs: 4_000 },
+      null,
+      () => submitted,
+    );
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(promptCount).toBe(2);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(review).resolves.toBe("time_budget");
+    expect(aborts).toBe(2);
+    expect(promptCount).toBe(3);
+    expect(steers).toHaveLength(2);
+    expect(steers[1]).toContain("first final submission attempt did not complete");
+  });
+
+  it("accepts the retry submission while cancellation remains pending", async () => {
+    vi.useFakeTimers();
+    let submitted = false;
+    let finishInitial: () => void = () => undefined;
+    let listener: (event: AgentSessionEvent) => void = () => undefined;
+    let promptCount = 0;
+    let aborts = 0;
+    let steers = 0;
+    const never = new Promise<void>(() => undefined);
+    const review = runReviewWithBudget(
+      {
+        abort: () => {
+          aborts += 1;
+          finishInitial();
+          return aborts === 1 ? Promise.resolve() : never;
+        },
+        clearQueue: () => ({ steering: [], followUp: [] }),
+        prompt: () => {
+          promptCount += 1;
+          if (promptCount === 1) {
+            return new Promise<void>((resolve) => {
+              finishInitial = resolve;
+            });
+          }
+          return never;
+        },
+        setActiveToolsByName: () => undefined,
+        steer: () => {
+          steers += 1;
+          if (steers === 2) {
+            setTimeout(() => {
+              submitted = true;
+              listener(TOOL_EVENT);
+            }, 100);
+          }
+          return Promise.resolve();
+        },
+        subscribe: (next) => {
+          listener = next;
+          return () => undefined;
+        },
+      },
+      "Review",
+      { timeBudgetMs: 10_000, warningRemainingMs: [], finalizationGraceMs: 4_000 },
+      null,
+      () => submitted,
+    );
+
+    await vi.advanceTimersByTimeAsync(12_100);
+    await expect(review).resolves.toBe("time_budget");
+    expect(aborts).toBe(2);
+    expect(steers).toBe(2);
+  });
+});
+
 describe("review budget finalization failures", () => {
   it("shares finalization between request and time budgets", async () => {
     vi.useFakeTimers();

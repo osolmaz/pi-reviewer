@@ -25,6 +25,11 @@ type PromptResult =
   | { readonly kind: "settled" }
   | { readonly kind: "failed"; readonly error: unknown };
 
+type FinalPromptOutcome =
+  | PromptResult
+  | { readonly kind: "submitted" }
+  | { readonly kind: "retry" };
+
 type MonotonicNow = () => number;
 
 type SubmissionSignal = {
@@ -131,6 +136,7 @@ export async function runReviewWithBudget(
         policy.finalizationGraceMs,
         "missing_submission",
         hasSubmission,
+        submission.submitted,
         now,
       );
     }
@@ -210,7 +216,7 @@ async function finalizeActiveReview(
     if (outcome.kind === "submitted" || hasSubmission()) return;
     if (outcome.kind === "failed") throw outcome.error;
     session.clearQueue();
-    await promptFinalReview(session, reason, hasSubmission);
+    await promptFinalReview(session, reason, hasSubmission, submitted, deadlineMs, now);
   };
   await withFinalizationDeadline(finalization(), session, deadlineMs, graceMs, now);
   return reason;
@@ -222,12 +228,13 @@ async function finalizeReview(
   graceMs: number,
   reason: FinalizationReason,
   hasSubmission: () => boolean,
+  submitted: Promise<void>,
   now: MonotonicNow,
 ): Promise<FinalizationReason> {
   session.clearQueue();
   session.setActiveToolsByName([SUBMIT_REVIEW_TOOL]);
   await withFinalizationDeadline(
-    promptFinalReview(session, reason, hasSubmission),
+    promptFinalReview(session, reason, hasSubmission, submitted, deadlineMs, now),
     session,
     deadlineMs,
     graceMs,
@@ -237,15 +244,83 @@ async function finalizeReview(
 }
 
 async function promptFinalReview(
-  session: Pick<ControlledSession, "prompt">,
+  session: Pick<ControlledSession, "abort" | "clearQueue" | "prompt" | "steer">,
   reason: FinalizationReason,
   hasSubmission: () => boolean,
+  submitted: Promise<void>,
+  deadlineMs: number,
+  now: MonotonicNow,
 ): Promise<void> {
-  await session.prompt(finalizationPrompt(reason));
-  if (hasSubmission()) return;
-  await session.prompt(
-    "No review was submitted. Call submit_review now with the best result supported by the evidence already gathered. Do not return prose and do not investigate further.",
+  const retryPrompt =
+    "The first final submission attempt did not complete. Call submit_review now with the best result supported by the evidence already gathered. Do not return prose and do not investigate further.";
+  const first = await waitForFinalPromptAttempt(
+    session,
+    finalizationPrompt(reason),
+    submitted,
+    deadlineMs,
+    now,
   );
+  if (first.kind === "submitted" || hasSubmission()) return;
+  if (first.kind === "failed") throw first.error;
+  if (first.kind === "settled") {
+    await promptAndRequireSubmission(session, retryPrompt, hasSubmission);
+    return;
+  }
+  await retryStalledFinalPrompt(session, retryPrompt, hasSubmission, submitted);
+}
+
+async function waitForFinalPromptAttempt(
+  session: Pick<ControlledSession, "prompt">,
+  prompt: string,
+  submitted: Promise<void>,
+  deadlineMs: number,
+  now: MonotonicNow,
+): Promise<FinalPromptOutcome> {
+  let retryTimer: NodeJS.Timeout | undefined;
+  const retry = new Promise<{ readonly kind: "retry" }>((resolve) => {
+    retryTimer = setTimeout(
+      () => {
+        resolve({ kind: "retry" });
+      },
+      Math.max(1, Math.floor((deadlineMs - now()) / 2)),
+    );
+  });
+  try {
+    return await Promise.race([
+      settledPrompt(session.prompt(prompt)),
+      submitted.then(() => ({ kind: "submitted" as const })),
+      retry,
+    ]);
+  } finally {
+    if (retryTimer !== undefined) clearTimeout(retryTimer);
+  }
+}
+
+async function retryStalledFinalPrompt(
+  session: Pick<ControlledSession, "abort" | "clearQueue" | "prompt" | "steer">,
+  retryPrompt: string,
+  hasSubmission: () => boolean,
+  submitted: Promise<void>,
+): Promise<void> {
+  session.clearQueue();
+  await session.steer(retryPrompt);
+  if (hasSubmission()) return;
+  const cancellation = await Promise.race([
+    settledPrompt(session.abort()),
+    submitted.then(() => ({ kind: "submitted" as const })),
+  ]);
+  if (cancellation.kind === "submitted" || hasSubmission()) return;
+  if (cancellation.kind === "failed") throw cancellation.error;
+  session.clearQueue();
+  await promptAndRequireSubmission(session, retryPrompt, hasSubmission);
+}
+
+async function promptAndRequireSubmission(
+  session: Pick<ControlledSession, "prompt">,
+  prompt: string,
+  hasSubmission: () => boolean,
+): Promise<void> {
+  await session.prompt(prompt);
   if (!hasSubmission()) throw new Error("review completed without submit_review");
 }
 

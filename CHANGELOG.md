@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1
+
+### Fixed
+
+- Retry one stalled final-submission request halfway through the remaining grace period without creating a second Pi session or moving the absolute review deadline.
+- Publish npm packages from GitHub Releases after validating the tag, package version, default-branch ancestry, and registry state.
+
 ## 0.1.0
 
 First public release of Pi Reviewer, a standalone code review CLI built with Pi Factory. It reviews a Git diff in a fresh, isolated Pi process and returns prioritized P0 through P3 findings in the same shape as standalone `codex review`.

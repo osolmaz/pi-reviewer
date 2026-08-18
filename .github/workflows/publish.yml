@@ -1,21 +1,15 @@
 name: Publish
 
 on:
-  push:
-    tags:
-      - "v*"
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Version to publish (must match package.json)"
-        required: true
+  release:
+    types: [published]
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: publish-${{ github.ref }}
+  group: publish-${{ github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
@@ -24,11 +18,26 @@ jobs:
     environment: npm
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22.19.0
           cache: npm
           registry-url: https://registry.npmjs.org
+      - name: Validate release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "$RELEASE_TAG" = "v$version"
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          if npm view "@osolmaz/pi-reviewer@$version" version >/dev/null 2>&1; then
+            echo "@osolmaz/pi-reviewer@$version is already published" >&2
+            exit 1
+          fi
       - run: npm ci
       - run: npm run check
       - run: npm publish --access public --provenance
