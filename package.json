@@ -1,9 +1,13 @@
 {
   "name": "@osolmaz/pi-reviewer",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Standalone Pi code reviewer with Codex-compatible findings",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/osolmaz/pi-reviewer"
+  },
   "engines": {
     "node": ">=22.19.0"
   },

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+### Fixed
+
+- Add the canonical GitHub repository URL required for npm provenance validation.
+
 ## 0.1.2
 
 ### Fixed
