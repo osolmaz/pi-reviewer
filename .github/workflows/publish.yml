@@ -26,6 +26,7 @@ jobs:
           node-version: 22.19.0
           cache: npm
           registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@11.5.1
       - name: Validate release
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2
+
+### Fixed
+
+- Run npm trusted publishing with npm 11.5.1, the first CLI release that supports OpenID Connect publishing.
+
 ## 0.1.1
 
 ### Fixed

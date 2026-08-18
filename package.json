@@ -1,6 +1,6 @@
 {
   "name": "@osolmaz/pi-reviewer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Standalone Pi code reviewer with Codex-compatible findings",
   "type": "module",
   "license": "MIT",
