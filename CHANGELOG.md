@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4
+
+### Fixed
+
+- Report the installed package version from validated package metadata instead of a hard-coded CLI value.
+
 ## 0.1.3
 
 ### Fixed

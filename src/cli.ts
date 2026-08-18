@@ -15,6 +15,7 @@ import { renderReview, renderReviewJson } from "./render.js";
 import { runReview, type RunReviewInput } from "./runner.js";
 import { terminalText } from "./terminal-text.js";
 import type { ModelSelection, ReviewRequest, ThinkingLevel, UserConfig } from "./types.js";
+import { packageVersion } from "./version.js";
 
 export async function main(args: readonly string[]): Promise<number> {
   const command = parseArgs(args);
@@ -36,7 +37,7 @@ async function runUtilityCommand(command: UtilityCommand): Promise<number> {
     return 0;
   }
   if (command.kind === "version") {
-    process.stdout.write("0.1.0\n");
+    process.stdout.write(`${packageVersion()}\n`);
     return 0;
   }
   return await runConfigCommand(command);
