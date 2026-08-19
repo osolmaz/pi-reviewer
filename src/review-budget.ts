@@ -6,7 +6,6 @@ export const DEFAULT_TIME_BUDGET_MS = 10 * 60_000;
 export const DEFAULT_FINALIZATION_GRACE_MS = 2 * 60_000;
 export const WORKER_SHUTDOWN_ALLOWANCE_MS = 30_000;
 const DEFAULT_WARNING_PERCENTAGES = [50, 25] as const;
-const SUBMIT_REVIEW_TOOL = "submit_review";
 
 export type ReviewTimePolicy = {
   readonly timeBudgetMs: number;
@@ -21,6 +20,10 @@ type ControlledSession = Pick<
   "abort" | "clearQueue" | "prompt" | "setActiveToolsByName" | "steer" | "subscribe"
 >;
 
+export type ReviewBudgetHooks = {
+  readonly enterFinalization?: () => void;
+};
+
 type PromptResult =
   | { readonly kind: "settled" }
   | { readonly kind: "failed"; readonly error: unknown };
@@ -29,6 +32,10 @@ type FinalPromptOutcome =
   | PromptResult
   | { readonly kind: "submitted" }
   | { readonly kind: "retry" };
+
+type ExplorationOutcome =
+  | PromptResult
+  | { readonly kind: "triggered"; readonly reason: FinalizationReason };
 
 type MonotonicNow = () => number;
 
@@ -83,6 +90,7 @@ export async function runReviewWithBudget(
   policy: ReviewTimePolicy,
   maxModelRequests: number | null,
   hasSubmission: () => boolean,
+  hooks: ReviewBudgetHooks = {},
   now: MonotonicNow = monotonicNow,
 ): Promise<FinalizationReason | null> {
   const reviewStartedAtMs = now();
@@ -123,13 +131,11 @@ export async function runReviewWithBudget(
   });
   const initial = settledPrompt(session.prompt(withBudgetNotice(prompt, policy)));
   try {
-    const outcome = await Promise.race([
-      initial,
-      finalizationTriggered.then((reason) => ({ kind: "triggered" as const, reason })),
-    ]);
+    const outcome = await waitForExploration(initial, finalizationTriggered);
     if (outcome.kind === "settled") {
       stopExploration();
       if (hasSubmission()) return null;
+      hooks.enterFinalization?.();
       return await finalizeReview(
         session,
         finalDeadline(reviewStartedAtMs, policy, now),
@@ -142,6 +148,7 @@ export async function runReviewWithBudget(
     }
     if (outcome.kind === "failed") throw outcome.error;
     stopExploration();
+    hooks.enterFinalization?.();
     const finalizationDeadlineMs = finalDeadline(reviewStartedAtMs, policy, now);
     return await finalizeActiveReview(
       session,
@@ -205,7 +212,6 @@ async function finalizeActiveReview(
   now: MonotonicNow,
 ): Promise<FinalizationReason> {
   session.clearQueue();
-  session.setActiveToolsByName([SUBMIT_REVIEW_TOOL]);
   const finalization = async (): Promise<void> => {
     await session.steer(finalizationPrompt(reason));
     if (hasSubmission()) return;
@@ -232,7 +238,6 @@ async function finalizeReview(
   now: MonotonicNow,
 ): Promise<FinalizationReason> {
   session.clearQueue();
-  session.setActiveToolsByName([SUBMIT_REVIEW_TOOL]);
   await withFinalizationDeadline(
     promptFinalReview(session, reason, hasSubmission, submitted, deadlineMs, now),
     session,
@@ -346,6 +351,16 @@ async function withFinalizationDeadline(
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
+}
+
+async function waitForExploration(
+  initial: Promise<PromptResult>,
+  finalizationTriggered: Promise<FinalizationReason>,
+): Promise<ExplorationOutcome> {
+  return await Promise.race([
+    initial,
+    finalizationTriggered.then((reason) => ({ kind: "triggered" as const, reason })),
+  ]);
 }
 
 function settledPrompt(prompt: Promise<void>): Promise<PromptResult> {

@@ -119,7 +119,7 @@ describe("review budget controller", () => {
     expect(steers).toHaveLength(2);
   });
 
-  it("turns the time deadline into one tool-only finalization request", async () => {
+  it("enters cache-preserving finalization before the final request", async () => {
     vi.useFakeTimers();
     let submitted = false;
     let finishInitial: () => void = () => undefined;
@@ -162,13 +162,18 @@ describe("review budget controller", () => {
       { timeBudgetMs: 60_000, warningRemainingMs: [], finalizationGraceMs: 20_000 },
       null,
       () => submitted,
+      {
+        enterFinalization: () => {
+          transitions.push("enter-finalization");
+        },
+      },
     );
 
     await vi.advanceTimersByTimeAsync(60_000);
     await expect(review).resolves.toBe("time_budget");
     expect(aborts).toBe(1);
-    expect(tools).toEqual([["submit_review"]]);
-    expect(transitions).toEqual(["restrict-tools", "steer", "abort"]);
+    expect(tools).toEqual([]);
+    expect(transitions).toEqual(["enter-finalization", "steer", "abort"]);
     expect(prompts[0]).toContain("Review time budget: 1m");
     expect(steers).toHaveLength(1);
     expect(steers[0]).toContain("time budget has ended");

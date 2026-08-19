@@ -5,13 +5,16 @@ import path from "node:path";
 
 import {
   createAgentSession,
+  createEventBus,
   DefaultResourceLoader,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   type AgentSessionEvent,
+  type EventBus,
 } from "@earendil-works/pi-coding-agent";
 
+import { enterReviewFinalization } from "./finalization.js";
 import {
   canonicalModelsStorePath,
   registerHuggingFaceOAuthProvider,
@@ -73,17 +76,8 @@ export async function createDefaultExecution(
   const settingsManager = SettingsManager.create(request.cwd, request.configDir, {
     projectTrusted: false,
   });
-  const resourceLoader = new DefaultResourceLoader({
-    cwd: request.cwd,
-    agentDir: request.configDir,
-    settingsManager,
-    additionalExtensionPaths: [request.extensionPath],
-    noExtensions: true,
-    noSkills: true,
-    noPromptTemplates: true,
-    noThemes: true,
-    systemPrompt: request.systemPrompt,
-  });
+  const eventBus = createEventBus();
+  const resourceLoader = createReviewResourceLoader(request, settingsManager, eventBus);
   await resourceLoader.reload();
   const extensionErrors = resourceLoader.getExtensions().errors;
   if (extensionErrors.length > 0) {
@@ -122,6 +116,11 @@ export async function createDefaultExecution(
         },
         request.maxModelRequests,
         () => submission !== undefined,
+        {
+          enterFinalization: () => {
+            enterReviewFinalization(session, eventBus);
+          },
+        },
       );
     },
     submission: () => submission,
@@ -132,6 +131,25 @@ export async function createDefaultExecution(
       await settingsManager.flush();
     },
   };
+}
+
+function createReviewResourceLoader(
+  request: ReviewWorkerRequest,
+  settingsManager: SettingsManager,
+  eventBus: EventBus,
+): DefaultResourceLoader {
+  return new DefaultResourceLoader({
+    cwd: request.cwd,
+    agentDir: request.configDir,
+    settingsManager,
+    eventBus,
+    additionalExtensionPaths: [request.extensionPath],
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    systemPrompt: request.systemPrompt,
+  });
 }
 
 export function createReviewSessionManager(request: ReviewWorkerRequest): SessionManager {
