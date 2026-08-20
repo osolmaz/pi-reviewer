@@ -279,23 +279,25 @@ describe("forced submission turn", () => {
   });
 
   it("fails unsupported routes before network dispatch", async () => {
-    const { manager, preSoftLeafId, evidence } = await fixture();
-    const { runtime, dispatch } = runtimeWith(() => completedStream());
-    const result = await runForcedSubmissionTurn({
-      modelRuntime: runtime,
-      model: { ...MODEL, api: "anthropic-messages" },
-      sessionManager: manager,
-      preSoftLeafId,
-      systemPrompt: "system",
-      tools: TOOLS,
-      finalizationPrompt: "finalize",
-      gate: new ReviewSubmissionGate(manager.getCwd()),
-      evidence,
-      deadlineMs: 100,
-      sessionId: "session-1",
-    });
-    expect(result).toMatchObject({ kind: "failed", forcedExitRequired: false });
-    expect(dispatch).not.toHaveBeenCalled();
+    for (const api of ["anthropic-messages", "pi-messages"] as const) {
+      const { manager, preSoftLeafId, evidence } = await fixture();
+      const { runtime, dispatch } = runtimeWith(() => completedStream());
+      const result = await runForcedSubmissionTurn({
+        modelRuntime: runtime,
+        model: { ...MODEL, api },
+        sessionManager: manager,
+        preSoftLeafId,
+        systemPrompt: "system",
+        tools: TOOLS,
+        finalizationPrompt: "finalize",
+        gate: new ReviewSubmissionGate(manager.getCwd()),
+        evidence,
+        deadlineMs: 100,
+        sessionId: "session-1",
+      });
+      expect(result).toMatchObject({ kind: "failed", forcedExitRequired: false });
+      expect(dispatch).not.toHaveBeenCalled();
+    }
   });
 
   it("cancels an expired request and reports settled cancellation", async () => {
