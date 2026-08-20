@@ -59,9 +59,9 @@ export async function runReview(input: RunReviewInput): Promise<ReviewOutput> {
     input.modelManifest === undefined ? runtimeConfigPaths(app) : await writePiRuntimeConfig(app);
   await mkdir(runtime.configDir, { recursive: true, mode: 0o700 });
   const extension = app.extensions?.[0];
-  if (extension === undefined) throw new Error("Pi Reviewer extension is not configured");
+  if (extension === undefined) throw new Error("pi-reviewer extension is not configured");
   if (app.systemPrompt === undefined)
-    throw new Error("Pi Reviewer system prompt is not configured");
+    throw new Error("pi-reviewer system prompt is not configured");
   const request = createWorkerRequest(
     input,
     app,
@@ -151,7 +151,7 @@ async function executeWorker(
   lifecycleReceipt: string | null,
 ): Promise<string> {
   const [program, ...args] = command;
-  if (program === undefined) throw new Error("Pi Reviewer worker command is empty");
+  if (program === undefined) throw new Error("pi-reviewer worker command is empty");
   const child = spawn(program, args, {
     cwd: request.cwd,
     env: {

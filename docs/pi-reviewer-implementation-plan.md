@@ -1,8 +1,8 @@
-# Pi Reviewer implementation plan
+# pi-reviewer implementation plan
 
 ## Goal
 
-Maintain Pi Reviewer as a standalone Pi Factory app in `osolmaz/pi-reviewer`. Its public interface is
+Maintain pi-reviewer as a standalone Pi Factory app in `osolmaz/pi-reviewer`. Its public interface is
 the `pi-reviewer` terminal command.
 
 ```bash
@@ -12,17 +12,17 @@ pi-reviewer --commit <sha>
 pi-reviewer "focus on cancellation safety"
 ```
 
-Pi Reviewer owns target parsing, review prompts, read-only inspection, review finalization, structured
+pi-reviewer owns target parsing, review prompts, read-only inspection, review finalization, structured
 output, lifecycle receipts, and terminal rendering. It does not register a global Pi extension or
 slash command.
 
-Pi Reviewer selects its own provider and model from a command-line override or its user config. A
+pi-reviewer selects its own provider and model from a command-line override or its user config. A
 review selection affects only that review process. It must not change the provider or model selected
 in normal Pi.
 
 The cross-repository provider and package design lives in the
 [selective Pi profile inheritance plan](https://github.com/osolmaz/pi-factory/blob/main/docs/2026-08-21-selective-profile-inheritance-plan.md).
-This document records the Pi Reviewer part of that plan.
+This document records the pi-reviewer part of that plan.
 
 ## User experience
 
@@ -45,7 +45,7 @@ pi-reviewer --model openai-codex/<other-model-id> --base main
 ```
 
 Resolution order is the command-line override followed by user config. A model value includes its
-provider. Pi Reviewer fails before starting a review when neither source supplies a model.
+provider. pi-reviewer fails before starting a review when neither source supplies a model.
 
 The command also provides:
 
@@ -63,10 +63,10 @@ contains findings.
 
 ## Pi Factory runtime
 
-Pi Reviewer uses Pi Factory's explicit, deny-by-default `inherit` contract for providers from the
+pi-reviewer uses Pi Factory's explicit, deny-by-default `inherit` contract for providers from the
 main Pi profile.
 
-For a provider with `source = "pi"`, Pi Reviewer selects:
+For a provider with `source = "pi"`, pi-reviewer selects:
 
 ```toml
 [inherit]
@@ -81,10 +81,10 @@ one enabled provider module when the selected provider has one, registers that p
 lookup and authentication checks, and creates the app-owned `DefaultResourceLoader` separately.
 
 The selected provider can use the main profile's canonical authentication or its existing
-provider-owned state. Pi Reviewer never copies, returns, logs, rewrites, or directly reads credential
+provider-owned state. pi-reviewer never copies, returns, logs, rewrites, or directly reads credential
 values.
 
-Pi Reviewer continues to choose the provider and model passed to its own `ModelRuntime`. It does not
+pi-reviewer continues to choose the provider and model passed to its own `ModelRuntime`. It does not
 write the main profile's `settings.json`, default provider, default model, model history, or any
 normal Pi session state.
 
@@ -182,7 +182,7 @@ Malformed output is a command failure. It never becomes a clean verdict.
 
 ## Read-only policy
 
-Pi Reviewer remains read-only. Its tools may inspect repository files and bounded Git state. They
+pi-reviewer remains read-only. Its tools may inspect repository files and bounded Git state. They
 must reject file mutation, network clients, arbitrary shell execution, process control, paths outside
 the checkout, and unsafe shell syntax.
 
@@ -199,7 +199,7 @@ state must not enter a receipt or session entry.
 
 ## Failure behavior
 
-Pi Reviewer stops with a clear error for:
+pi-reviewer stops with a clear error for:
 
 - a missing or disabled selected provider;
 - duplicate provider declarations;
@@ -212,7 +212,7 @@ Pi Reviewer stops with a clear error for:
 - missing `submit_review` submission;
 - receipt or cleanup failure.
 
-After Pi Factory selects an enabled provider module, Pi Reviewer never retries with Pi's built-in
+After Pi Factory selects an enabled provider module, pi-reviewer never retries with Pi's built-in
 provider or another credential path.
 
 ## Tests
@@ -243,7 +243,7 @@ Keep mutation testing configured but manual unless the user explicitly requests 
 
 ## Rollout
 
-Update Pi Reviewer only after compatible Pi Factory and OnurPi changes are released and installed.
+Update pi-reviewer only after compatible Pi Factory and OnurPi changes are released and installed.
 Pin the required Pi Factory version. Replace the direct source-Pi runtime path instead of retaining it
 as a fallback.
 
@@ -272,11 +272,11 @@ that was blocked by missing `openai-codex` authentication.
 
 ## Acceptance criteria
 
-The work is complete when Pi Reviewer can select its own `openai-codex` model, load the provider
+The work is complete when pi-reviewer can select its own `openai-codex` model, load the provider
 implementation and authentication already selected by the main profile, and run a complete
 three-phase review without loading unrelated profile resources.
 
-The selected model applies only to Pi Reviewer. Normal Pi's provider, model, settings, sessions, and
+The selected model applies only to pi-reviewer. Normal Pi's provider, model, settings, sessions, and
 credentials remain unchanged. Provider routing can move accounts only before semantic output, and
 one account stays selected through tools, retries, compaction, and finalization.
 

@@ -1,6 +1,6 @@
 # Codex review comparison
 
-Pi Reviewer follows standalone `codex review` at OpenAI Codex commit `fa1d4c40d0e63eef2e0ba8a9e004ccd0a80b77f5`. The two commands share the same review targets and rubric, plus the same priorities and structured result fields. Their runtime implementations differ because Pi Reviewer runs as an independent Pi Factory app.
+pi-reviewer follows standalone `codex review` at OpenAI Codex commit `fa1d4c40d0e63eef2e0ba8a9e004ccd0a80b77f5`. The two commands share the same review targets and rubric, plus the same priorities and structured result fields. Their runtime implementations differ because pi-reviewer runs as an independent Pi Factory app.
 
 | Behavior               | `codex review`                              | `pi-reviewer`                                    |
 | ---------------------- | ------------------------------------------- | ------------------------------------------------ |
@@ -30,9 +30,9 @@ The test suite checks the following compatibility points:
 
 ## Intentional differences
 
-Pi Reviewer requires an external model selection. No model identifier appears in the review extension. Provider and model choice therefore belongs to the app configuration.
+pi-reviewer requires an external model selection. No model identifier appears in the review extension. Provider and model choice therefore belongs to the app configuration.
 
-Pi Reviewer uses a narrower repository tool set. It rejects shell composition, mutating Git commands, external helpers, network clients, process-executing search options, symlink escapes, and paths outside the checkout.
+pi-reviewer uses a narrower repository tool set. It rejects shell composition, mutating Git commands, external helpers, network clients, process-executing search options, symlink escapes, and paths outside the checkout.
 
 Malformed output fails the command. This differs from Codex's display fallback and prevents an invalid response from being mistaken for a clean review.
 

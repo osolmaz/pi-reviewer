@@ -50,7 +50,7 @@ async function runConfigCommand(command: ConfigCommand): Promise<number> {
       return 0;
     case "config-reset":
       await resetConfig();
-      process.stdout.write("Pi Reviewer defaults reset.\n");
+      process.stdout.write("pi-reviewer defaults reset.\n");
       return 0;
     case "config-set-model":
       process.stdout.write(`${JSON.stringify(await setConfigModel(command.model), null, 2)}\n`);

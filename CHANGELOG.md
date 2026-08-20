@@ -34,7 +34,7 @@
 
 ## 0.1.0
 
-First public release of Pi Reviewer, a standalone code review CLI built with Pi Factory. It reviews a Git diff in a fresh, isolated Pi process and returns prioritized P0 through P3 findings in the same shape as standalone `codex review`.
+First public release of pi-reviewer, a standalone code review CLI built with Pi Factory. It reviews a Git diff in a fresh, isolated Pi process and returns prioritized P0 through P3 findings in the same shape as standalone `codex review`.
 
 ### Added
 

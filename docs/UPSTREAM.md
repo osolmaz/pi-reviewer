@@ -1,6 +1,6 @@
 # Upstream review behavior
 
-Pi Reviewer uses the standalone review behavior from OpenAI Codex as its compatibility reference.
+pi-reviewer uses the standalone review behavior from OpenAI Codex as its compatibility reference.
 
 | Item       | Value                                                  |
 | ---------- | ------------------------------------------------------ |
@@ -30,9 +30,9 @@ Copied material:
 
 Local changes:
 
-- The system prompt tells the model to use Pi Reviewer's guarded `review_shell` tool.
-- Every finding must include a numeric P0 through P3 priority. Codex allows an omitted priority, but Pi Reviewer requires one so terminal output is always prioritized.
+- The system prompt tells the model to use pi-reviewer's guarded `review_shell` tool.
+- Every finding must include a numeric P0 through P3 priority. Codex allows an omitted priority, but pi-reviewer requires one so terminal output is always prioritized.
 - Malformed output is a command failure. It is never treated as a clean review.
-- Pi Reviewer uses a fresh Pi Factory app process instead of a Codex child task.
-- Model selection comes from `--model` or Pi Reviewer's user config. The review extension contains no model identifier.
+- pi-reviewer uses a fresh Pi Factory app process instead of a Codex child task.
+- Model selection comes from `--model` or pi-reviewer's user config. The review extension contains no model identifier.
 - Repository inspection uses a smaller read-only tool set and rejects shell operators, network clients, mutation attempts and paths outside the checkout.

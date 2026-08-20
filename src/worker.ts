@@ -273,7 +273,7 @@ async function createReviewRuntime(
 function inheritedReviewerApp(request: ReviewWorkerRequest): PiAppDefinition {
   return {
     id: "pi-reviewer",
-    name: "Pi Reviewer",
+    name: "pi-reviewer",
     stateDir: request.configDir,
     sessionDir: request.sessionDir,
     piCommand: [],

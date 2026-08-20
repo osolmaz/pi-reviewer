@@ -76,7 +76,7 @@ async function findPackageRoot(start: string): Promise<string> {
   for (;;) {
     if (await exists(path.join(current, "pi-factory.toml"))) return current;
     const parent = path.dirname(current);
-    if (parent === current) throw new Error("could not find Pi Reviewer app bundle");
+    if (parent === current) throw new Error("could not find pi-reviewer app bundle");
     current = parent;
   }
 }

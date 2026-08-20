@@ -1,10 +1,10 @@
 ---
-title: Add cooperative Pi Reviewer deadlines
+title: Add cooperative pi-reviewer deadlines
 author: Onur Solmaz <2453968+osolmaz@users.noreply.github.com>
 date: 2026-08-10
 ---
 
-# Add cooperative Pi Reviewer deadlines
+# Add cooperative pi-reviewer deadlines
 
 > **Status:** The warning and exploration-budget design remains current. The finalization design is
 > superseded by [Add soft and hard review finalization](2026-08-20-soft-and-hard-review-finalization-plan.md).
@@ -12,7 +12,7 @@ date: 2026-08-10
 
 ## Goal
 
-Pi Reviewer must stop treating its review limit as a wall-clock kill. A configured deadline should
+pi-reviewer must stop treating its review limit as a wall-clock kill. A configured deadline should
 help the model manage its remaining time, stop new investigation when the exploration budget ends,
 and give the model a separate chance to submit the best review supported by evidence already in the
 session.
@@ -42,7 +42,7 @@ model to finalize. The sealed DeepSeek study showed this repeatedly.
 
 ## Interface
 
-Pi Reviewer will support:
+pi-reviewer will support:
 
 ```text
 --time-budget 30m
@@ -100,11 +100,11 @@ finalization window rather than moving the deadline. The parent process force-ki
 worker process group only when it has not exited within the separate 30-second shutdown allowance.
 
 The submission tool validates the existing public review schema and ends the agent turn with
-`terminate: true`. Pi Reviewer's external text and JSON output stay unchanged.
+`terminate: true`. pi-reviewer's external text and JSON output stay unchanged.
 
 ## Scope
 
-- Add strict duration and warning parsing to the Pi Reviewer CLI.
+- Add strict duration and warning parsing to the pi-reviewer CLI.
 - Extend worker protocol version 1 in place with normalized deadline fields.
 - Add a worker-local budget controller with an injectable clock for deterministic tests.
 - Add the typed terminating submission tool and worker result event.

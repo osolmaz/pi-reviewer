@@ -8,7 +8,7 @@ date: 2026-08-20
 
 ## Goal
 
-Pi Reviewer must give the review model a normal chance to finish before it forces a structured
+pi-reviewer must give the review model a normal chance to finish before it forces a structured
 submission. The review will use three phases:
 
 1. Ten minutes of normal exploration.
@@ -35,8 +35,8 @@ ordered tool definitions. Pi adds one finalization user message. The extension b
 of every tool except `submit_review`, but the request still contains the full tool list. This phase
 lets the model think and submit through the normal Pi loop.
 
-If soft finalization ends or times out without a valid submission, Pi Reviewer stops it and confirms
-that it is idle. Pi Reviewer then moves the native session leaf back to the entry saved immediately
+If soft finalization ends or times out without a valid submission, pi-reviewer stops it and confirms
+that it is idle. pi-reviewer then moves the native session leaf back to the entry saved immediately
 before soft finalization. The failed soft branch stays in the append-only session as evidence. Hard
 finalization builds its context from that pre-soft branch and adds the same finalization user message.
 It sends exactly one request through the public `ModelRuntime` and Pi AI interfaces with:
@@ -89,7 +89,7 @@ The default timeline is:
 
 A normal run can therefore use up to 15 minutes and 30 seconds before parent termination handling.
 An early valid submission ends the run immediately. A soft response that finishes without a valid
-submission also moves to hard finalization immediately after quiescence; Pi Reviewer does not wait
+submission also moves to hard finalization immediately after quiescence; pi-reviewer does not wait
 out an idle timer.
 
 `--time-budget` continues to set the exploration duration. `--finalization-grace` sets the soft
@@ -193,7 +193,7 @@ The direct request uses `ModelRuntime.streamSimple` with a dedicated `AbortSigna
 named `submit_review` tool choice, and `maxRetries: 0`. It does not call `AgentSession.prompt`,
 `steer`, `followUp`, automatic compaction, or the normal tool loop.
 
-Before dispatch, Pi Reviewer verifies that the selected model API and provider adapter can serialize
+Before dispatch, pi-reviewer verifies that the selected model API and provider adapter can serialize
 named forced tool choice. An unsupported route fails before network dispatch. Prompt wording is not
 a fallback.
 
@@ -304,7 +304,7 @@ soft finalization, so the hard request can reproduce the same system prompt, tra
 ordered full tool definitions, and final user tail.
 
 Local structural hashes prove only local equality. Reasoning and tool-choice request fields can
-still affect a provider cache key. Pi Reviewer reports cache reuse only when the provider returns a
+still affect a provider cache key. pi-reviewer reports cache reuse only when the provider returns a
 cache-read counter. It makes no cache claim from prompt identity alone.
 
 ## Context size
@@ -312,7 +312,7 @@ cache-read counter. It makes no cache claim from prompt identity alone.
 The direct hard request does not run hidden compaction. It can use a compaction summary that the
 normal Pi session already committed before `preSoftLeafId`.
 
-Before hard dispatch, Pi Reviewer checks the converted context against the selected model limit and
+Before hard dispatch, pi-reviewer checks the converted context against the selected model limit and
 the final response allowance. If the request does not fit, it fails with durable evidence. It does
 not change the prompt, drop tools, trim history, or create an unrecorded summary.
 
@@ -420,7 +420,7 @@ Implementation is ready for release consideration when:
 - Normal timeout handling does not depend on watchdog `SIGKILL`.
 - Existing review output, metrics, route/model attestation, native session, and failure semantics
   remain valid.
-- Local checks, Pi Reviewer review, CI, and the one-task canary pass.
+- Local checks, pi-reviewer review, CI, and the one-task canary pass.
 
 ## Verification
 
@@ -446,7 +446,7 @@ Keep the existing public review result and metrics formats. Extend the current C
 and receipt contracts in place. No migration of existing native sessions is needed; old sessions
 remain historical evidence.
 
-Pi Reviewer stays a standalone Pi Factory app. It does not register a global Pi extension or change
+pi-reviewer stays a standalone Pi Factory app. It does not register a global Pi extension or change
 Pi core.
 
 ## Future Pi API
@@ -461,7 +461,7 @@ The ideal public Pi API is one transactional turn method that can:
 - Persist the user, assistant, and tool-result messages through normal session handling.
 - Return a durable request and cancellation receipt.
 
-That upstream API is outside this task and outside Pi Reviewer authority. The hard-finalization
+That upstream API is outside this task and outside pi-reviewer authority. The hard-finalization
 adapter must stay narrow so it can later be replaced by such a public API without changing the
 review lifecycle, submission gate, evidence schema, or canary contract.
 

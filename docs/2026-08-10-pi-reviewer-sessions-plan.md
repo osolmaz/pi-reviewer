@@ -1,14 +1,14 @@
 ---
-title: Persist Pi Reviewer sessions
+title: Persist pi-reviewer sessions
 author: Onur Solmaz <2453968+osolmaz@users.noreply.github.com>
 date: 2026-08-10
 ---
 
-# Persist Pi Reviewer sessions
+# Persist pi-reviewer sessions
 
 ## Goal
 
-Pi Reviewer must save every review as a native Pi session by default. Harbor integrations must copy
+pi-reviewer must save every review as a native Pi session by default. Harbor integrations must copy
 that session into the trial artifacts before deleting a remote sandbox. These sessions are the
 durable record for debugging, resuming reviews, auditing agent behavior, and preparing later
 training datasets.
@@ -21,7 +21,7 @@ reasoning when the HF Sandbox is deleted.
 
 - Use Pi's public `SessionManager` API and native JSONL format.
 - Save one new session for every review by default.
-- Use Pi Reviewer's configured session directory rather than normal interactive Pi history.
+- Use pi-reviewer's configured session directory rather than normal interactive Pi history.
 - Keep an explicit `--no-session` option for callers that require ephemeral execution.
 - Make the resolved session file available to integrations through a small receipt file without
   mixing metadata into review output.
@@ -47,7 +47,7 @@ reasoning when the HF Sandbox is deleted.
 
 ### AACR-Bench Harbor
 
-- Give every Pi Reviewer trial a clean remote session directory.
+- Give every pi-reviewer trial a clean remote session directory.
 - Request a receipt at a stable remote path.
 - Download the session and an integrity manifest into the trial's `agent/` directory in a `finally`
   path.
@@ -66,8 +66,8 @@ reasoning when the HF Sandbox is deleted.
 
 ## Session contract
 
-A normal review creates a native Pi JSONL file under Pi Reviewer's configured session directory.
-When `--session-receipt PATH` is present, Pi Reviewer writes a mode-0600 JSON receipt with:
+A normal review creates a native Pi JSONL file under pi-reviewer's configured session directory.
+When `--session-receipt PATH` is present, pi-reviewer writes a mode-0600 JSON receipt with:
 
 ```json
 {

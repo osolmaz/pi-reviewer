@@ -30,7 +30,7 @@ function terminal(answers: string[]): AuthTerminal & { output: string[] } {
   };
 }
 
-describe("Pi Reviewer authentication", () => {
+describe("pi-reviewer authentication", () => {
   it("uses regular Pi credentials with app-local model paths", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "pi-reviewer-auth-"));
     cleanup.push(root);

@@ -18,7 +18,7 @@ function temporaryRoot(): string {
 }
 
 describe("package version", () => {
-  it("reads the nearest Pi Reviewer package metadata", () => {
+  it("reads the nearest pi-reviewer package metadata", () => {
     const root = temporaryRoot();
     const nested = join(root, "dist", "src");
     mkdirSync(nested, { recursive: true });
