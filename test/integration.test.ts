@@ -64,7 +64,7 @@ console.log(JSON.stringify({type:"agent_end", messages:[]}));
 
 // eslint-disable-next-line max-lines-per-function
 describe("pi-reviewer app", () => {
-  it("loads the Pi Factory bundle without hard-coding a model in the extension", async () => {
+  it("loads the pi-factory bundle without hard-coding a model in the extension", async () => {
     const fake = await fakePi();
     const app = await loadReviewerApp({ packageRoot, piCommand: fake.command });
     expect(app.extensions).toHaveLength(1);

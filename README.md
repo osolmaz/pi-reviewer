@@ -4,7 +4,7 @@
   <img src="assets/cover.svg" alt="pi-reviewer: a Git diff goes in, prioritized P0 to P3 findings come out" width="880">
 </p>
 
-pi-reviewer is a standalone code review CLI built with [Pi Factory](https://github.com/osolmaz/pi-factory). It reviews a Git diff in a fresh Pi process and returns prioritized P0 through P3 findings in the same shape as standalone `codex review`.
+pi-reviewer is a standalone code review CLI built with [pi-factory](https://github.com/osolmaz/pi-factory). It reviews a Git diff in a fresh Pi process and returns prioritized P0 through P3 findings in the same shape as standalone `codex review`.
 
 ## Install
 

@@ -446,7 +446,7 @@ Keep the existing public review result and metrics formats. Extend the current C
 and receipt contracts in place. No migration of existing native sessions is needed; old sessions
 remain historical evidence.
 
-pi-reviewer stays a standalone Pi Factory app. It does not register a global Pi extension or change
+pi-reviewer stays a standalone pi-factory app. It does not register a global Pi extension or change
 Pi core.
 
 ## Future Pi API

@@ -41,13 +41,13 @@ Codex took 1.45 times as long across the two snapshots. A retrospective threshol
 
 Codex reported three P1 findings:
 
-- The Pi Factory lockfile used an SSH URL that broke clean CI installs.
+- The pi-factory lockfile used an SSH URL that broke clean CI installs.
 - The login path launched with the invalid `unconfigured` provider.
 - Built-in grep and the lack of forced offline mode violated the read-only, no-network boundary.
 
 pi-reviewer reported two P1 findings:
 
-- The same Pi Factory SSH lockfile defect.
+- The same pi-factory SSH lockfile defect.
 - Allowed Git `--output` options could overwrite files in the checkout.
 
 The tools agreed on the lockfile defect. Codex found two valid issue families that pi-reviewer missed. pi-reviewer found one valid repository-write path that Codex missed.

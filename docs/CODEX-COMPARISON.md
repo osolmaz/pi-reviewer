@@ -1,6 +1,6 @@
 # Codex review comparison
 
-pi-reviewer follows standalone `codex review` at OpenAI Codex commit `fa1d4c40d0e63eef2e0ba8a9e004ccd0a80b77f5`. The two commands share the same review targets and rubric, plus the same priorities and structured result fields. Their runtime implementations differ because pi-reviewer runs as an independent Pi Factory app.
+pi-reviewer follows standalone `codex review` at OpenAI Codex commit `fa1d4c40d0e63eef2e0ba8a9e004ccd0a80b77f5`. The two commands share the same review targets and rubric, plus the same priorities and structured result fields. Their runtime implementations differ because pi-reviewer runs as an independent pi-factory app.
 
 | Behavior               | `codex review`                              | `pi-reviewer`                                    |
 | ---------------------- | ------------------------------------------- | ------------------------------------------------ |

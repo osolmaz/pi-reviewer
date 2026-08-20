@@ -2,7 +2,7 @@
 
 ## Goal
 
-Maintain pi-reviewer as a standalone Pi Factory app in `osolmaz/pi-reviewer`. Its public interface is
+Maintain pi-reviewer as a standalone pi-factory app in `osolmaz/pi-reviewer`. Its public interface is
 the `pi-reviewer` terminal command.
 
 ```bash
@@ -61,9 +61,9 @@ Invalid arguments, missing authentication, unavailable models, malformed output,
 timeout, and worker failures return a nonzero status. A completed review returns zero even when it
 contains findings.
 
-## Pi Factory runtime
+## pi-factory runtime
 
-pi-reviewer uses Pi Factory's explicit, deny-by-default `inherit` contract for providers from the
+pi-reviewer uses pi-factory's explicit, deny-by-default `inherit` contract for providers from the
 main Pi profile.
 
 For a provider with `source = "pi"`, pi-reviewer selects:
@@ -76,7 +76,7 @@ providers = ["openai-codex"]
 It selects no inherited packages. Ambient extensions, skills, prompt templates, themes, context
 files, commands, tools, hooks, and sessions remain disabled.
 
-Pi Factory creates `ModelRuntime` with model and authentication state from the main profile. It loads
+pi-factory creates `ModelRuntime` with model and authentication state from the main profile. It loads
 one enabled provider module when the selected provider has one, registers that provider before model
 lookup and authentication checks, and creates the app-owned `DefaultResourceLoader` separately.
 
@@ -119,7 +119,7 @@ config directory remains available for Reviewer settings and resources.
 
 ## Review runtime
 
-The worker asks the Pi Factory SDK runtime for the selected provider and model. Pi Factory must
+The worker asks the pi-factory SDK runtime for the selected provider and model. pi-factory must
 register any selected provider module before model lookup and authentication checks.
 
 The Reviewer resource loader keeps:
@@ -131,7 +131,7 @@ The Reviewer resource loader keeps:
 
 It loads no resource from the main profile except the selected provider and its model data.
 
-The complete three-phase review runs inside one Pi Factory `run` operation. The operation starts
+The complete three-phase review runs inside one pi-factory `run` operation. The operation starts
 before the first possible model request and stays active through:
 
 - exploration;
@@ -212,7 +212,7 @@ pi-reviewer stops with a clear error for:
 - missing `submit_review` submission;
 - receipt or cleanup failure.
 
-After Pi Factory selects an enabled provider module, pi-reviewer never retries with Pi's built-in
+After pi-factory selects an enabled provider module, pi-reviewer never retries with Pi's built-in
 provider or another credential path.
 
 ## Tests
@@ -243,8 +243,8 @@ Keep mutation testing configured but manual unless the user explicitly requests 
 
 ## Rollout
 
-Update pi-reviewer only after compatible Pi Factory and OnurPi changes are released and installed.
-Pin the required Pi Factory version. Replace the direct source-Pi runtime path instead of retaining it
+Update pi-reviewer only after compatible pi-factory and OnurPi changes are released and installed.
+Pin the required pi-factory version. Replace the direct source-Pi runtime path instead of retaining it
 as a fallback.
 
 Run synthetic tests before a bounded real-profile test. The real test must confirm:
@@ -266,7 +266,7 @@ that was blocked by missing `openai-codex` authentication.
 - **Other persistent data:** Reviewer may update its own model and thinking defaults only through
   explicit config commands. It does not create or copy provider credentials.
 - **Pi internals:** none.
-- **Public APIs:** Pi Factory manifest version 1, Pi Factory's SDK runtime, Pi `SettingsManager`,
+- **Public APIs:** pi-factory manifest version 1, pi-factory's SDK runtime, Pi `SettingsManager`,
   `DefaultPackageManager`, `DefaultResourceLoader`, `ModelRuntime`, provider registration, and
   documented resource flags.
 

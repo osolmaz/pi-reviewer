@@ -16,7 +16,7 @@
     <text x="56" y="110" class="mono" font-size="46" font-weight="700">
       <tspan fill="#58a6ff">pi</tspan><tspan fill="#e6edf3">-reviewer</tspan>
     </text>
-    <text x="56" y="148" class="sans" font-size="17" fill="#8b949e">Standalone code review CLI built with Pi Factory.</text>
+    <text x="56" y="148" class="sans" font-size="17" fill="#8b949e">Standalone code review CLI built with pi-factory.</text>
     <text x="56" y="174" class="sans" font-size="17" fill="#8b949e">Reviews a Git diff and returns prioritized findings.</text>
 
     <rect x="56" y="200" width="276" height="44" rx="8" fill="#161b22" stroke="#30363d"/>
