@@ -1,10 +1,14 @@
-# Pi Reviewer
+# pi-reviewer
 
-Pi Reviewer is a standalone code review CLI built with [Pi Factory](https://github.com/osolmaz/pi-factory). It reviews a Git diff in a fresh Pi process and returns prioritized P0 through P3 findings in the same shape as standalone `codex review`.
+<p align="center">
+  <img src="assets/cover.svg" alt="pi-reviewer: a Git diff goes in, prioritized P0 to P3 findings come out" width="880">
+</p>
+
+pi-reviewer is a standalone code review CLI built with [Pi Factory](https://github.com/osolmaz/pi-factory). It reviews a Git diff in a fresh Pi process and returns prioritized P0 through P3 findings in the same shape as standalone `codex review`.
 
 ## Install
 
-Install Pi Reviewer from npm:
+Install pi-reviewer from npm:
 
 ```bash
 npm install -g @osolmaz/pi-reviewer
@@ -28,7 +32,7 @@ npm link
 
 ## Configure a model
 
-Pi Reviewer has no model identifier in its review extension. Set the default outside the extension:
+pi-reviewer has no model identifier in its review extension. Set the default outside the extension:
 
 ```bash
 pi-reviewer config set model openai-codex/gpt-5.6-terra
@@ -41,14 +45,14 @@ The optional user config lives at `~/.config/pi-reviewer/config.json`. A command
 pi-reviewer --model openai-codex/gpt-5.6-sol --thinking high --base main
 ```
 
-Pi Reviewer selects the provider implementation, model data, and existing authentication from the
+pi-reviewer selects the provider implementation, model data, and existing authentication from the
 main Pi profile:
 
 ```bash
 pi-reviewer models gpt-5.6
 ```
 
-The model in Reviewer config applies only to Pi Reviewer. It does not change normal Pi's selected
+The model in Reviewer config applies only to pi-reviewer. It does not change normal Pi's selected
 provider or model. Prompts, tools, context files, sessions, repository policy, and review lifecycle
 remain isolated.
 
@@ -120,7 +124,7 @@ Every review saves a native Pi JSONL session under `~/.local/state/pi-reviewer/s
 
 Integrations can isolate a run with `--session-dir DIR` and request private receipts with `--session-receipt PATH` and `--lifecycle-receipt PATH`. The session receipt records the native session path, mode, byte count, entry count, and SHA-256 checksum. The lifecycle receipt records redacted phase, branch, request, usage, and cleanup evidence. It does not contain prompts, source text, assistant text, tool arguments, request headers, or credentials. Use `--no-session` only when persistence is deliberately unwanted; it cannot be combined with session output options.
 
-Pi Reviewer treats the time limit as an exploration budget. The default run gives the model 10 minutes to investigate, with reminders at 50% and 25% remaining. It then gives the model up to two minutes to submit through a normal Pi turn. If that turn does not submit, Pi Reviewer makes one provider request with reasoning off and `submit_review` forced. The hard request gets a separate full two-minute limit.
+pi-reviewer treats the time limit as an exploration budget. The default run gives the model 10 minutes to investigate, with reminders at 50% and 25% remaining. It then gives the model up to two minutes to submit through a normal Pi turn. If that turn does not submit, pi-reviewer makes one provider request with reasoning off and `submit_review` forced. The hard request gets a separate full two-minute limit.
 
 Configure the three phase limits and repeatable warnings as needed:
 
@@ -134,21 +138,21 @@ pi-reviewer --base main \
   --hard-finalization-grace 2m
 ```
 
-Explicit warnings replace the defaults. Before each finalization phase, Pi Reviewer clears queued messages, aborts the prior turn, and waits for Pi to report that the session is idle. Soft finalization keeps the selected thinking level, system prompt, context, and full ordered tool list. The review guard blocks all tool execution except `submit_review` without changing that list.
+Explicit warnings replace the defaults. Before each finalization phase, pi-reviewer clears queued messages, aborts the prior turn, and waits for Pi to report that the session is idle. Soft finalization keeps the selected thinking level, system prompt, context, and full ordered tool list. The review guard blocks all tool execution except `submit_review` without changing that list.
 
-Hard finalization runs only when soft finalization does not submit. Pi Reviewer keeps the failed soft branch in the native session, restores the branch point saved before soft finalization, and sends one direct request with the same prompt prefix and full tools. The request disables reasoning, forces the named `submit_review` tool, and has no automatic retry. One submission gate accepts at most one valid review across all phases. Pi Reviewer reports provider cache reuse only when the provider returns a cache-read count.
+Hard finalization runs only when soft finalization does not submit. pi-reviewer keeps the failed soft branch in the native session, restores the branch point saved before soft finalization, and sends one direct request with the same prompt prefix and full tools. The request disables reasoning, forces the named `submit_review` tool, and has no automatic retry. One submission gate accepts at most one valid review across all phases. pi-reviewer reports provider cache reuse only when the provider returns a cache-read count.
 
 `--max-model-requests N` uses the same finalization path after the Nth complete model response. Time and request limits cannot start competing finalization turns. Final review output must come through `submit_review`; raw JSON or prose is not accepted as a second submission protocol.
 
-A successful review returns zero even when it has findings. Invalid targets, authentication failures, model failures, finalization failures, hard worker timeouts, or cancellation return nonzero. Pi Reviewer never fabricates a clean result when the provider cannot finalize. A persistent session remains available after review or output-validation failure once model execution has started, including budget warnings and finalization prompts.
+A successful review returns zero even when it has findings. Invalid targets, authentication failures, model failures, finalization failures, hard worker timeouts, or cancellation return nonzero. pi-reviewer never fabricates a clean result when the provider cannot finalize. A persistent session remains available after review or output-validation failure once model execution has started, including budget warnings and finalization prompts.
 
 Review execution stays in a bounded child worker that is separate from the CLI process. Worker initialization has its own one-minute limit and does not consume review time; the parent starts its review watchdog only after the worker reports that model review is starting. Tools can inspect only the current checkout. Guarded command subprocesses receive a minimal environment without model-provider credentials. Mutation, network clients, shell operators, external Git helpers, and paths outside the checkout are blocked.
 
 ## Codex compatibility
 
-Pi Reviewer vendors Codex's review rubric and target prompt wording from commit `fa1d4c40d0e63eef2e0ba8a9e004ccd0a80b77f5`. [`UPSTREAM.md`](docs/UPSTREAM.md) records the exact sources and local changes. [`CODEX-COMPARISON.md`](docs/CODEX-COMPARISON.md) compares the commands and gives the same-branch verification procedure. [`CASE-STUDY.md`](docs/CASE-STUDY.md) records a paired comparison on two historical snapshots with known defects.
+pi-reviewer vendors Codex's review rubric and target prompt wording from commit `fa1d4c40d0e63eef2e0ba8a9e004ccd0a80b77f5`. [`UPSTREAM.md`](docs/UPSTREAM.md) records the exact sources and local changes. [`CODEX-COMPARISON.md`](docs/CODEX-COMPARISON.md) compares the commands and gives the same-branch verification procedure. [`CASE-STUDY.md`](docs/CASE-STUDY.md) records a paired comparison on two historical snapshots with known defects.
 
-Both tools support custom instructions and the same review targets. A target can cover uncommitted changes or compare against either a base branch or one commit. Both return findings with a title, body, confidence, priority, location, correctness verdict, and overall confidence. Pi Reviewer requires every finding to contain a P0 through P3 priority and fails closed on malformed output.
+Both tools support custom instructions and the same review targets. A target can cover uncommitted changes or compare against either a base branch or one commit. Both return findings with a title, body, confidence, priority, location, correctness verdict, and overall confidence. pi-reviewer requires every finding to contain a P0 through P3 priority and fails closed on malformed output.
 
 ## Development
 
