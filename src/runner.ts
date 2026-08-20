@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import path from "node:path";
 
 import { writePiRuntimeConfig, type PiAppDefinition } from "@osolmaz/pi-factory";
 
@@ -124,7 +125,8 @@ function sessionRequestOptions(
     persistSession,
     sessionDir: input.sessionDir ?? input.app.sessionDir,
     sessionReceipt: input.sessionReceipt ?? null,
-    lifecycleReceipt: input.lifecycleReceipt ?? null,
+    lifecycleReceipt:
+      input.lifecycleReceipt === undefined ? null : path.resolve(input.cwd, input.lifecycleReceipt),
   };
 }
 

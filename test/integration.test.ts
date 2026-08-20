@@ -155,6 +155,7 @@ describe("Pi Reviewer app", () => {
       selection: { provider: "openai-codex", model: "external-review-model", thinking: "high" },
       cwd: fake.root,
       prompt: "Review shared auth",
+      lifecycleReceipt: "lifecycle.json",
     });
 
     const request = JSON.parse(await readFile(fake.argsFile, "utf8")) as Record<string, unknown>;
@@ -164,7 +165,7 @@ describe("Pi Reviewer app", () => {
     expect(request["persistSession"]).toBe(true);
     expect(request["sessionDir"]).toBe(path.join(stateDir, "sessions"));
     expect(request["sessionReceipt"]).toBeNull();
-    expect(request["lifecycleReceipt"]).toBeNull();
+    expect(request["lifecycleReceipt"]).toBe(path.join(fake.root, "lifecycle.json"));
     expect(request["timeBudgetMs"]).toBe(10 * 60_000);
     expect(request["warningRemainingMs"]).toEqual([5 * 60_000, 150_000]);
     expect(request["finalizationGraceMs"]).toBe(2 * 60_000);
