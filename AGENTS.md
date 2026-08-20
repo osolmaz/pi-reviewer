@@ -7,5 +7,7 @@
 - Treat Pi JSONL and model output as untrusted, bounded input.
 - Preserve Codex review prompt and output provenance in `docs/UPSTREAM.md` and `LICENSE.codex`.
 - Add or update tests for every behavior change.
+- Do not use local byte or token estimates to block a provider request. Pi compaction may use estimates, but only the provider can enforce its exact context limit.
+- Preserve the compacted session branch for hard finalization. If the request is too large, send it once with no retry and record the provider error instead of trimming context or tools.
 - Run `npm run check` and `npm run slophammer` before finishing, followed by `git diff --check`.
 - Keep mutation testing configured but manual unless the user explicitly requests it.

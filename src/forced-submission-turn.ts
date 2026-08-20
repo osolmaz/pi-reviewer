@@ -89,11 +89,8 @@ export async function runForcedSubmissionTurn(
     finalizationPrompt: structuralHash(input.finalizationPrompt),
     orderedTools: structuralHash(input.tools),
   });
-  try {
-    assertContextFits(input.model, context);
-  } catch (error) {
-    return failed(asError(error));
-  }
+  // Pi has already compacted this branch when needed. Only the provider knows the exact
+  // token count after applying its chat template, tool serialization, and tokenizer.
   if (input.model.maxTokens < HARD_FINALIZATION_MAX_TOKENS) {
     return failed(
       new Error(
@@ -131,6 +128,12 @@ export async function runForcedSubmissionTurn(
 
   let stream;
   try {
+    setHardEvidence(input, {
+      dispatchedAt,
+      eventCounts,
+      streamedCharacters,
+      toolChoice,
+    });
     // Pi AI 0.84.2 adapters publicly support the model-level "off" value, but the
     // generic streamSimple option type narrows reasoning to enabled levels only.
     stream = input.modelRuntime.streamSimple(
@@ -256,19 +259,6 @@ export function requireSingleSubmissionCall(message: AssistantMessage): ToolCall
   );
   if (actionable) throw new Error("hard finalization returned content outside submit_review");
   return call;
-}
-
-export function estimateHardRequestTokens(context: Context): number {
-  return Math.ceil(Buffer.byteLength(JSON.stringify(context), "utf8") / 2);
-}
-
-function assertContextFits(model: Model<Api>, context: Context): void {
-  const estimatedInput = estimateHardRequestTokens(context);
-  if (estimatedInput + HARD_FINALIZATION_MAX_TOKENS > model.contextWindow) {
-    throw new Error(
-      `hard finalization context does not fit: estimated ${String(estimatedInput)} input + ${String(HARD_FINALIZATION_MAX_TOKENS)} output > ${String(model.contextWindow)}`,
-    );
-  }
 }
 
 async function consumeAssistant(

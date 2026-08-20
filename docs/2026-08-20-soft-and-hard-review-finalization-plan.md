@@ -2,6 +2,7 @@
 title: Add soft and hard review finalization
 author: Onur Solmaz <2453968+osolmaz@users.noreply.github.com>
 date: 2026-08-20
+updated: 2026-08-21
 ---
 
 # Add soft and hard review finalization
@@ -309,12 +310,18 @@ cache-read counter. It makes no cache claim from prompt identity alone.
 
 ## Context size
 
-The direct hard request does not run hidden compaction. It can use a compaction summary that the
-normal Pi session already committed before `preSoftLeafId`.
+The direct hard request does not run hidden compaction. It uses any compaction summary that the
+normal Pi session committed before `preSoftLeafId`.
 
-Before hard dispatch, pi-reviewer checks the converted context against the selected model limit and
-the final response allowance. If the request does not fit, it fails with durable evidence. It does
-not change the prompt, drop tools, trim history, or create an unrecorded summary.
+pi-reviewer does not use a local byte or token estimate to block hard dispatch. Hugging Face
+Inference Providers apply provider-specific chat templates, tool serialization, and tokenizers, so a
+local estimate cannot enforce their exact context limit. The provider is the authority. pi-reviewer
+sends the unchanged request once with no retry and records a provider context error if the request
+does not fit. It does not change the prompt, drop tools, trim history, or create an unrecorded
+summary.
+
+This rule replaces the earlier local admission check. That check estimated tokens from serialized
+JSON bytes and rejected compacted Qwen requests that the provider had already shown could fit.
 
 Set a bounded hard-response token limit from the largest existing valid review artifact plus a
 reviewed safety margin. Record the method and selected value in tests before implementation is
@@ -350,7 +357,9 @@ Add or update these tests before any live canary:
    non-submit tool execution, and accept `submit_review` through the normal loop.
 5. Branch tests that preserve the failed soft path and build hard context from `preSoftLeafId`.
 6. Hard-payload tests for identical prompt and tool prefixes, reasoning off, named tool choice,
-   `maxRetries: 0`, one dispatch, and the separate two-minute deadline.
+   `maxRetries: 0`, one dispatch, and the separate two-minute deadline. They must prove that local
+   size estimates cannot block dispatch and that a real provider context error fails after exactly
+   one request.
 7. Submission-gate tests for a valid review, a valid empty review, missing calls, malformed calls,
    duplicate calls, multiple calls, other tools, and prose-only output.
 8. Native JSONL tests for hard user, assistant, and tool-result order, parent IDs, usage, route and

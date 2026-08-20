@@ -40,6 +40,10 @@ const MODEL: Model<"openai-completions"> = {
   contextWindow: 131_072,
   maxTokens: 16_384,
 };
+const SHORT_CONTEXT_MODEL: Model<"openai-completions"> = {
+  ...MODEL,
+  contextWindow: 32_768,
+};
 const PI_MESSAGES_MODEL: Model<"pi-messages"> = {
   id: MODEL.id,
   name: MODEL.name,
@@ -115,6 +119,19 @@ function completedStream(message = assistant()): AssistantMessageEventStream {
     stream.push({ type: "toolcall_end", contentIndex: 0, toolCall: call, partial: message });
   }
   stream.push({ type: "done", reason: "toolUse", message });
+  stream.end(message);
+  return stream;
+}
+
+function providerErrorStream(errorMessage: string): AssistantMessageEventStream {
+  const message: AssistantMessage = {
+    ...assistant(),
+    content: [],
+    stopReason: "error",
+    errorMessage,
+  };
+  const stream = createAssistantMessageEventStream();
+  stream.push({ type: "error", reason: "error", error: message });
   stream.end(message);
   return stream;
 }
@@ -250,6 +267,67 @@ describe("forced submission turn", () => {
       responseModel: "served-review-model",
       usage: assistant().usage,
     });
+  });
+
+  it("lets the provider enforce context admission", async () => {
+    const { manager, preSoftLeafId, evidence } = await fixture();
+    const { runtime, dispatch, captured } = runtimeWith(() => completedStream());
+    const result = await runForcedSubmissionTurn({
+      modelRuntime: runtime,
+      model: SHORT_CONTEXT_MODEL,
+      sessionManager: manager,
+      preSoftLeafId,
+      systemPrompt: "system".repeat(12_000),
+      tools: TOOLS,
+      finalizationPrompt: "finalize",
+      gate: new ReviewSubmissionGate(manager.getCwd()),
+      evidence,
+      deadlineMs: 120_000,
+      sessionId: "session-1",
+    });
+
+    expect(result.kind).toBe("accepted");
+    expect(dispatch).toHaveBeenCalledOnce();
+    expect(
+      Math.ceil(Buffer.byteLength(JSON.stringify(captured.context), "utf8") / 2) +
+        HARD_FINALIZATION_MAX_TOKENS,
+    ).toBeGreaterThan(SHORT_CONTEXT_MODEL.contextWindow);
+  });
+
+  it("records a provider context rejection after one dispatch", async () => {
+    const { manager, preSoftLeafId, evidence } = await fixture();
+    const { runtime, dispatch } = runtimeWith(() =>
+      providerErrorStream("provider context limit exceeded"),
+    );
+    const result = await runForcedSubmissionTurn({
+      modelRuntime: runtime,
+      model: SHORT_CONTEXT_MODEL,
+      sessionManager: manager,
+      preSoftLeafId,
+      systemPrompt: "system",
+      tools: TOOLS,
+      finalizationPrompt: "finalize",
+      gate: new ReviewSubmissionGate(manager.getCwd()),
+      evidence,
+      deadlineMs: 120_000,
+      sessionId: "session-1",
+      onAssistant: (message) => {
+        evidence.recordAssistant(message);
+      },
+    });
+
+    expect(result).toMatchObject({ kind: "failed", forcedExitRequired: false });
+    expect(dispatch).toHaveBeenCalledOnce();
+    expect(evidence.snapshot()).toMatchObject({
+      hardRequest: {
+        maxRetries: 0,
+        maxTokens: HARD_FINALIZATION_MAX_TOKENS,
+        streamEventCounts: { error: 1 },
+      },
+      responses: [{ stopReason: "error" }],
+      submission: { acceptedCallCount: 0 },
+    });
+    expect(JSON.stringify(manager.getBranch())).toContain("provider context limit exceeded");
   });
 
   it("persists and reports a billed hard response before validation rejects it", async () => {

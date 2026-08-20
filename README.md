@@ -126,6 +126,8 @@ Integrations can isolate a run with `--session-dir DIR` and request private rece
 
 pi-reviewer treats the time limit as an exploration budget. The default run gives the model 10 minutes to investigate, with reminders at 50% and 25% remaining. It then gives the model up to two minutes to submit through a normal Pi turn. If that turn does not submit, pi-reviewer makes one provider request with reasoning off and `submit_review` forced. The hard request gets a separate full two-minute limit.
 
+The hard request uses the session branch that Pi already compacted. pi-reviewer sends that branch unchanged and lets the provider enforce its exact context limit; it does not block the request with a local size estimate, trim the history, or retry a rejected request.
+
 Configure the three phase limits and repeatable warnings as needed:
 
 ```bash
