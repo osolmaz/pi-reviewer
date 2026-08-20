@@ -47,30 +47,36 @@ describe("Pi Reviewer authentication", () => {
     let receivedMethod = "";
     let authPath = "";
     let modelsPath = "";
-    await loginReviewerApp(app, "openai-codex", ui, (paths) => {
-      authPath = paths.authPath;
-      modelsPath = paths.modelsPath;
-      return Promise.resolve({
-        getProviders: () => [{ id: "openai-codex", name: "OpenAI Codex", auth: { oauth: {} } }],
-        login: async (provider, method, interaction) => {
-          receivedProvider = provider;
-          receivedMethod = method;
-          interaction.notify({
-            type: "auth_url",
-            url: "https://example.test/auth",
-            instructions: "Continue in the browser",
-          });
-          interaction.notify({
-            type: "device_code",
-            userCode: "ABCD-EFGH",
-            verificationUri: "https://example.test/device",
-          });
-          interaction.notify({ type: "progress", message: "Waiting" });
-          await interaction.prompt({ type: "manual_code", message: "Paste code" });
-          return {};
-        },
-      });
-    });
+    await loginReviewerApp(
+      app,
+      "openai-codex",
+      ui,
+      (paths) => {
+        authPath = paths.authPath;
+        modelsPath = paths.modelsPath;
+        return Promise.resolve({
+          getProviders: () => [{ id: "openai-codex", name: "OpenAI Codex", auth: { oauth: {} } }],
+          login: async (provider, method, interaction) => {
+            receivedProvider = provider;
+            receivedMethod = method;
+            interaction.notify({
+              type: "auth_url",
+              url: "https://example.test/auth",
+              instructions: "Continue in the browser",
+            });
+            interaction.notify({
+              type: "device_code",
+              userCode: "ABCD-EFGH",
+              verificationUri: "https://example.test/device",
+            });
+            interaction.notify({ type: "progress", message: "Waiting" });
+            await interaction.prompt({ type: "manual_code", message: "Paste code" });
+            return {};
+          },
+        });
+      },
+      () => Promise.resolve(false),
+    );
 
     expect(receivedProvider).toBe("openai-codex");
     expect(receivedMethod).toBe("oauth");
@@ -81,6 +87,27 @@ describe("Pi Reviewer authentication", () => {
     expect(ui.output.join("")).toContain("Continue in the browser");
     expect(ui.output.join("")).toContain("Waiting");
     expect(ui.output.join("")).toContain("Authenticated OpenAI Codex in the regular Pi profile");
+  });
+
+  it("does not create a fallback credential for provider-managed authentication", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pi-reviewer-provider-auth-"));
+    cleanup.push(root);
+    const app = await loadReviewerApp(appOptions);
+    const login = vi.fn(() => Promise.resolve({}));
+    await expect(
+      loginReviewerApp(
+        app,
+        "managed",
+        terminal([]),
+        () =>
+          Promise.resolve({
+            getProviders: () => [{ id: "managed", name: "Managed", auth: { oauth: {} } }],
+            login,
+          }),
+        () => Promise.resolve(true),
+      ),
+    ).rejects.toThrow("managed by the selected provider");
+    expect(login).not.toHaveBeenCalled();
   });
 
   it("resolves auth.json from the regular Pi home", () => {
@@ -101,26 +128,31 @@ describe("Pi Reviewer authentication", () => {
     };
     const ui = terminal(["1", "2", "top-secret"]);
     let secret = "";
-    await loginReviewerApp(app, undefined, ui, () =>
-      Promise.resolve({
-        getProviders: () => [
-          {
-            id: "provider",
-            name: "Provider",
-            auth: { oauth: {}, apiKey: { login: () => undefined } },
+    await loginReviewerApp(
+      app,
+      undefined,
+      ui,
+      () =>
+        Promise.resolve({
+          getProviders: () => [
+            {
+              id: "provider",
+              name: "Provider",
+              auth: { oauth: {}, apiKey: { login: () => undefined } },
+            },
+          ],
+          login: async (_provider, method, interaction) => {
+            expect(method).toBe("api_key");
+            secret = await interaction.prompt({ type: "secret", message: "API key" });
+            interaction.notify({
+              type: "info",
+              message: "Saved",
+              links: [{ label: "Docs", url: "https://example.test/docs" }],
+            });
+            return {};
           },
-        ],
-        login: async (_provider, method, interaction) => {
-          expect(method).toBe("api_key");
-          secret = await interaction.prompt({ type: "secret", message: "API key" });
-          interaction.notify({
-            type: "info",
-            message: "Saved",
-            links: [{ label: "Docs", url: "https://example.test/docs" }],
-          });
-          return {};
-        },
-      }),
+        }),
+      () => Promise.resolve(false),
     );
 
     expect(secret).toBe("top-secret");

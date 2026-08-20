@@ -1,17 +1,26 @@
 import type { ThinkingLevel } from "./types.js";
 
+export type ReviewWorkerRuntime =
+  | {
+      readonly source: "pi";
+      readonly agentDir: string;
+    }
+  | {
+      readonly source: "custom";
+      readonly authPath: string;
+      readonly modelsPath: string;
+    };
+
 export type ReviewWorkerRequest = {
   readonly version: 1;
   readonly cwd: string;
   readonly prompt: string;
-  readonly authPath: string;
-  readonly modelsPath: string;
+  readonly runtime: ReviewWorkerRuntime;
   readonly configDir: string;
   readonly extensionPath: string;
   readonly systemPrompt: string;
   readonly provider: string;
   readonly model: string;
-  readonly customModel: boolean;
   readonly persistSession: boolean;
   readonly sessionDir: string;
   readonly sessionReceipt: string | null;
@@ -55,14 +64,12 @@ export function validateWorkerRequest(value: unknown): ReviewWorkerRequest {
     "version",
     "cwd",
     "prompt",
-    "authPath",
-    "modelsPath",
+    "runtime",
     "configDir",
     "extensionPath",
     "systemPrompt",
     "provider",
     "model",
-    "customModel",
     "persistSession",
     "sessionDir",
     "sessionReceipt",
@@ -88,14 +95,12 @@ export function validateWorkerRequest(value: unknown): ReviewWorkerRequest {
     version: 1,
     cwd: requiredString(value, "cwd"),
     prompt: requiredString(value, "prompt"),
-    authPath: requiredString(value, "authPath"),
-    modelsPath: requiredString(value, "modelsPath"),
+    runtime: runtimeRequest(value["runtime"]),
     configDir: requiredString(value, "configDir"),
     extensionPath: requiredString(value, "extensionPath"),
     systemPrompt: requiredString(value, "systemPrompt"),
     provider: requiredString(value, "provider"),
     model: requiredString(value, "model"),
-    customModel: requiredBoolean(value, "customModel"),
     persistSession: requiredBoolean(value, "persistSession"),
     sessionDir: requiredString(value, "sessionDir"),
     sessionReceipt: optionalString(value["sessionReceipt"], "sessionReceipt"),
@@ -111,6 +116,36 @@ export function validateWorkerRequest(value: unknown): ReviewWorkerRequest {
     thinking: thinkingLevel(value["thinking"]),
     tools,
   };
+}
+
+function runtimeRequest(value: unknown): ReviewWorkerRuntime {
+  if (!isRecord(value)) throw new Error("review worker runtime must be an object");
+  const source = value["source"];
+  if (source === "pi") {
+    const allowed = new Set(["source", "agentDir"]);
+    rejectUnknownRuntimeFields(value, allowed);
+    return { source, agentDir: requiredString(value, "agentDir") };
+  }
+  if (source === "custom") {
+    const allowed = new Set(["source", "authPath", "modelsPath"]);
+    rejectUnknownRuntimeFields(value, allowed);
+    return {
+      source,
+      authPath: requiredString(value, "authPath"),
+      modelsPath: requiredString(value, "modelsPath"),
+    };
+  }
+  throw new Error("review worker runtime source must be pi or custom");
+}
+
+function rejectUnknownRuntimeFields(
+  value: Readonly<Record<string, unknown>>,
+  allowed: ReadonlySet<string>,
+): void {
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length > 0) {
+    throw new Error(`review worker runtime has unknown field ${unknown.join(", ")}`);
+  }
 }
 
 function requiredString(value: Readonly<Record<string, unknown>>, key: string): string {

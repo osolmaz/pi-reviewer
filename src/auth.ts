@@ -1,9 +1,14 @@
 import { createInterface } from "node:readline/promises";
 
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { writePiRuntimeConfig, type PiAppDefinition } from "@osolmaz/pi-factory";
+import {
+  resolveInheritance,
+  writePiRuntimeConfig,
+  type PiAppDefinition,
+} from "@osolmaz/pi-factory";
 
-import { regularPiAuthPath } from "./auth-path.js";
+import { selectAppModel } from "./app.js";
+import { regularPiAgentDir, regularPiAuthPath } from "./auth-path.js";
 import {
   canonicalModelsStorePath,
   registerHuggingFaceOAuthProvider,
@@ -35,6 +40,7 @@ type RuntimePaths = {
 };
 
 type RuntimeFactory = (paths: RuntimePaths) => Promise<LoginRuntime>;
+type ProviderAuthenticationOwner = (app: PiAppDefinition, providerId: string) => Promise<boolean>;
 
 export type AuthTerminal = {
   question(message: string, signal?: AbortSignal): Promise<string>;
@@ -47,6 +53,7 @@ export async function loginReviewerApp(
   requestedProvider?: string,
   terminal: AuthTerminal = createAuthTerminal(),
   createRuntime: RuntimeFactory = defaultRuntimeFactory,
+  providerOwnsAuthentication: ProviderAuthenticationOwner = inheritedProviderOwnsAuthentication,
 ): Promise<void> {
   const config = await writePiRuntimeConfig(app);
   const runtime = await createRuntime({
@@ -55,6 +62,11 @@ export async function loginReviewerApp(
   });
   const providers = loginProviders(runtime.getProviders());
   const provider = await selectProvider(providers, requestedProvider, terminal);
+  if (await providerOwnsAuthentication(app, provider.id)) {
+    throw new Error(
+      `Authentication for ${provider.name} is managed by the selected provider in the main Pi profile.`,
+    );
+  }
   const method = await selectAuthType(provider, terminal);
   await runtime.login(provider.id, method, createAuthInteraction(terminal));
   terminal.write(terminalText(`Authenticated ${provider.name} in the regular Pi profile.\n`));
@@ -230,6 +242,24 @@ function consumeSecretCharacter(
   }
   const next = character >= " " && character !== "\u001b" ? `${value}${character}` : value;
   return { value: next, done: false, cancelled: false };
+}
+
+async function inheritedProviderOwnsAuthentication(
+  app: PiAppDefinition,
+  providerId: string,
+): Promise<boolean> {
+  const selected = selectAppModel(app, {
+    provider: providerId,
+    model: "authentication-check",
+    thinking: "off",
+  });
+  const inheritance = await resolveInheritance({
+    app: selected,
+    cwd: process.cwd(),
+    agentDir: regularPiAgentDir(),
+    providerId,
+  });
+  return inheritance.providerModule !== undefined;
 }
 
 export async function defaultRuntimeFactory(paths: RuntimePaths): Promise<LoginRuntime> {

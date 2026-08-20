@@ -28,31 +28,47 @@ export function selectAppModel(
   selection: ModelSelection,
   manifest?: CustomModelManifest,
 ): PiAppDefinition {
-  const provider =
-    manifest === undefined
-      ? {
+  if (manifest === undefined) {
+    return {
+      ...app,
+      providers: [
+        {
           id: selection.provider,
-          source: "pi" as const,
+          source: "pi",
           models: [{ id: selection.model, reasoning: true }],
-        }
-      : {
-          id: manifest.provider.id,
-          source: "custom" as const,
-          baseUrl: manifest.provider.baseUrl,
-          api: "openai-completions" as const,
-          ...(manifest.provider.apiKeyEnv === undefined
-            ? {}
-            : { apiKey: `$${manifest.provider.apiKeyEnv}` }),
-          ...(manifest.provider.compat === undefined ? {} : { compat: manifest.provider.compat }),
-          models: [manifest.model],
-        };
+        },
+      ],
+      defaultProvider: selection.provider,
+      defaultModel: selection.model,
+      thinking: selection.thinking,
+      inherit: { providers: [selection.provider], packages: [] },
+    };
+  }
+  const isolatedApp = withoutInheritance(app);
   return {
-    ...app,
-    providers: [provider],
+    ...isolatedApp,
+    providers: [
+      {
+        id: manifest.provider.id,
+        source: "custom",
+        baseUrl: manifest.provider.baseUrl,
+        api: "openai-completions",
+        ...(manifest.provider.apiKeyEnv === undefined
+          ? {}
+          : { apiKey: `$${manifest.provider.apiKeyEnv}` }),
+        ...(manifest.provider.compat === undefined ? {} : { compat: manifest.provider.compat }),
+        models: [manifest.model],
+      },
+    ],
     defaultProvider: selection.provider,
     defaultModel: selection.model,
     thinking: selection.thinking,
   };
+}
+
+function withoutInheritance(app: PiAppDefinition): PiAppDefinition {
+  const { inherit, ...isolatedApp } = app;
+  return inherit === undefined ? app : isolatedApp;
 }
 
 async function findPackageRoot(start: string): Promise<string> {

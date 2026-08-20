@@ -69,7 +69,19 @@ async function runLogin(provider: string | undefined): Promise<number> {
 }
 
 async function runModels(search: string | undefined): Promise<number> {
-  const models = await listReviewerModels(await loadReviewerApp(), search);
+  const config = await loadConfig();
+  const selected = config.model === undefined ? undefined : parseModel(config.model);
+  const models = await listReviewerModels(
+    await loadReviewerApp(),
+    search,
+    undefined,
+    selected === undefined
+      ? undefined
+      : {
+          ...selected,
+          thinking: config.thinking ?? "high",
+        },
+  );
   process.stdout.write(
     models.length === 0 ? "No matching authenticated models.\n" : `${models.join("\n")}\n`,
   );

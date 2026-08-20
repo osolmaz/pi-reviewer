@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import type { AssistantMessage, Tool, TSchema } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, Tool, TSchema } from "@earendil-works/pi-ai";
 import {
   createAgentSession,
   createEventBus,
@@ -14,7 +14,13 @@ import {
   SettingsManager,
   type AgentSessionEvent,
   type EventBus,
+  type ResourceLoader,
 } from "@earendil-works/pi-coding-agent";
+import {
+  createPiFactoryRuntime,
+  type PiAppDefinition,
+  type PiFactoryRuntime,
+} from "@osolmaz/pi-factory";
 
 import { runForcedSubmissionTurn } from "./forced-submission-turn.js";
 import { finalizeSessionReceipt, LifecycleEvidence, structuralHash } from "./lifecycle-receipt.js";
@@ -36,7 +42,7 @@ type ReviewWorkerExecution = {
   readonly subscribe: (listener: (event: AgentSessionEvent) => void) => () => void;
   readonly prompt: (prompt: string) => Promise<ReviewControllerResult>;
   readonly submission: () => ReviewSubmission | undefined;
-  readonly dispose: () => void;
+  readonly dispose: () => void | Promise<void>;
   readonly flush: () => Promise<void>;
 };
 
@@ -65,7 +71,7 @@ export async function runReviewWorker(
     failure = asError(error);
   } finally {
     unsubscribe();
-    execution.dispose();
+    await execution.dispose();
     await execution.flush();
   }
   if (result?.forcedExitRequired === true) {
@@ -84,33 +90,12 @@ export async function runReviewWorker(
 export async function createDefaultExecution(
   request: ReviewWorkerRequest,
 ): Promise<ReviewWorkerExecution> {
-  const modelRuntime = await ModelRuntime.create({
-    authPath: request.authPath,
-    modelsPath: request.modelsPath,
-    modelsStorePath: canonicalModelsStorePath(request.authPath),
-    allowModelNetwork: false,
-  });
-  if (!request.customModel) await registerHuggingFaceOAuthProvider(modelRuntime);
-  const model = modelRuntime.getModel(request.provider, request.model);
-  if (model === undefined) {
-    throw new Error(`review model not found: ${request.provider}/${request.model}`);
-  }
-  if (!(await modelRuntime.checkAuth(request.provider))) {
-    throw new Error(`no authentication for review provider ${request.provider}`);
-  }
-
   const settingsManager = SettingsManager.create(request.cwd, request.configDir, {
     projectTrusted: false,
   });
   const eventBus = createEventBus();
-  const resourceLoader = createReviewResourceLoader(request, settingsManager, eventBus);
-  await resourceLoader.reload();
-  const extensionErrors = resourceLoader.getExtensions().errors;
-  if (extensionErrors.length > 0) {
-    throw new Error(
-      `review extension failed to load: ${extensionErrors.map((entry) => entry.error).join("; ")}`,
-    );
-  }
+  const reviewRuntime = await createReviewRuntime(request, settingsManager, eventBus);
+  const { modelRuntime, model, resourceLoader } = reviewRuntime;
 
   const sessionManager = createReviewSessionManager(request);
   const lifecycle = new ReviewLifecycle();
@@ -155,59 +140,64 @@ export async function createDefaultExecution(
       };
     },
     prompt: async (prompt) =>
-      await runThreePhaseReview(
-        {
-          session,
-          sessionManager,
-          eventBus,
-          policy: {
-            timeBudgetMs: request.timeBudgetMs,
-            warningRemainingMs: request.warningRemainingMs,
-            finalizationGraceMs: request.finalizationGraceMs,
-            hardFinalizationGraceMs: request.hardFinalizationGraceMs,
-          },
-          maxModelRequests: request.maxModelRequests,
-          gate,
-          lifecycle,
-          evidence,
-          recordStablePrefix: (preSoftLeafId, finalizationPrompt) => {
-            if (sessionManager.getLeafId() !== preSoftLeafId) {
-              throw new Error("review session moved before soft finalization");
-            }
-            evidence.setStructuralHashes({
-              systemPrompt: structuralHash(stableSystemPrompt),
-              contextPrefix: structuralHash(
-                convertToLlm(sessionManager.buildSessionContext().messages),
-              ),
-              finalizationPrompt: structuralHash(finalizationPrompt),
-              orderedTools: structuralHash(hardTools),
-            });
-          },
-          hardFinalize: async (preSoftLeafId, finalizationPrompt) =>
-            await runForcedSubmissionTurn({
-              modelRuntime,
-              model,
+      await reviewRuntime.run(
+        session.sessionId,
+        async () =>
+          await runThreePhaseReview(
+            {
+              session,
               sessionManager,
-              preSoftLeafId,
-              systemPrompt: stableSystemPrompt,
-              tools: hardTools,
-              finalizationPrompt,
-              gate,
-              evidence,
-              deadlineMs: request.hardFinalizationGraceMs,
-              sessionId: session.sessionId,
-              onAssistant: (message) => {
-                evidence.recordAssistant(message);
-                emitDirectAssistant(directListeners, message);
+              eventBus,
+              policy: {
+                timeBudgetMs: request.timeBudgetMs,
+                warningRemainingMs: request.warningRemainingMs,
+                finalizationGraceMs: request.finalizationGraceMs,
+                hardFinalizationGraceMs: request.hardFinalizationGraceMs,
               },
-            }),
-        },
-        prompt,
+              maxModelRequests: request.maxModelRequests,
+              gate,
+              lifecycle,
+              evidence,
+              recordStablePrefix: (preSoftLeafId, finalizationPrompt) => {
+                if (sessionManager.getLeafId() !== preSoftLeafId) {
+                  throw new Error("review session moved before soft finalization");
+                }
+                evidence.setStructuralHashes({
+                  systemPrompt: structuralHash(stableSystemPrompt),
+                  contextPrefix: structuralHash(
+                    convertToLlm(sessionManager.buildSessionContext().messages),
+                  ),
+                  finalizationPrompt: structuralHash(finalizationPrompt),
+                  orderedTools: structuralHash(hardTools),
+                });
+              },
+              hardFinalize: async (preSoftLeafId, finalizationPrompt) =>
+                await runForcedSubmissionTurn({
+                  modelRuntime,
+                  model,
+                  sessionManager,
+                  preSoftLeafId,
+                  systemPrompt: stableSystemPrompt,
+                  tools: hardTools,
+                  finalizationPrompt,
+                  gate,
+                  evidence,
+                  deadlineMs: request.hardFinalizationGraceMs,
+                  sessionId: session.sessionId,
+                  onAssistant: (message) => {
+                    evidence.recordAssistant(message);
+                    emitDirectAssistant(directListeners, message);
+                  },
+                }),
+            },
+            prompt,
+          ),
       ),
     submission: () => gate.submission,
-    dispose: () => {
+    dispose: async () => {
       unsubscribeEvidence();
       session.dispose();
+      await reviewRuntime.close();
     },
     flush: async () => {
       await settingsManager.flush();
@@ -215,6 +205,89 @@ export async function createDefaultExecution(
       lifecycle.record({ kind: "session_flushed" });
       await evidence.flush();
     },
+  };
+}
+
+type ReviewRuntime = {
+  readonly modelRuntime: ModelRuntime;
+  readonly model: Model<Api>;
+  readonly resourceLoader: ResourceLoader;
+  readonly run: <T>(runId: string, operation: () => Promise<T>) => Promise<T>;
+  readonly close: () => Promise<void>;
+};
+
+async function createReviewRuntime(
+  request: ReviewWorkerRequest,
+  settingsManager: SettingsManager,
+  eventBus: EventBus,
+): Promise<ReviewRuntime> {
+  if (request.runtime.source === "pi") {
+    const runtime: PiFactoryRuntime = await createPiFactoryRuntime({
+      app: inheritedReviewerApp(request),
+      cwd: request.cwd,
+      agentDir: request.runtime.agentDir,
+      appAgentDir: request.configDir,
+      providerId: request.provider,
+      modelId: request.model,
+      appResources: {
+        settingsManager,
+        eventBus,
+        extensionPaths: [request.extensionPath],
+        systemPrompt: request.systemPrompt,
+        noContextFiles: true,
+      },
+      prepareModelRuntime: registerHuggingFaceOAuthProvider,
+    });
+    return runtime;
+  }
+  const modelRuntime = await ModelRuntime.create({
+    authPath: request.runtime.authPath,
+    modelsPath: request.runtime.modelsPath,
+    modelsStorePath: canonicalModelsStorePath(request.runtime.authPath),
+    allowModelNetwork: false,
+  });
+  const model = modelRuntime.getModel(request.provider, request.model);
+  if (model === undefined) {
+    throw new Error(`review model not found: ${request.provider}/${request.model}`);
+  }
+  if (!(await modelRuntime.checkAuth(request.provider))) {
+    throw new Error(`no authentication for review provider ${request.provider}`);
+  }
+  const resourceLoader = createReviewResourceLoader(request, settingsManager, eventBus);
+  await resourceLoader.reload();
+  const extensionErrors = resourceLoader.getExtensions().errors;
+  if (extensionErrors.length > 0) {
+    throw new Error(
+      `review extension failed to load: ${extensionErrors.map((entry) => entry.error).join("; ")}`,
+    );
+  }
+  return {
+    modelRuntime,
+    model,
+    resourceLoader,
+    run: async <T>(_runId: string, operation: () => Promise<T>) => await operation(),
+    close: () => Promise.resolve(),
+  };
+}
+
+function inheritedReviewerApp(request: ReviewWorkerRequest): PiAppDefinition {
+  return {
+    id: "pi-reviewer",
+    name: "Pi Reviewer",
+    stateDir: request.configDir,
+    sessionDir: request.sessionDir,
+    piCommand: [],
+    providers: [
+      {
+        id: request.provider,
+        source: "pi",
+        models: [{ id: request.model, reasoning: true }],
+      },
+    ],
+    defaultProvider: request.provider,
+    defaultModel: request.model,
+    thinking: request.thinking,
+    inherit: { providers: [request.provider], packages: [] },
   };
 }
 
@@ -233,6 +306,7 @@ function createReviewResourceLoader(
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
+    noContextFiles: true,
     systemPrompt: request.systemPrompt,
   });
 }

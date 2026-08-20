@@ -1,9 +1,14 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { writePiRuntimeConfig, type PiAppDefinition } from "@osolmaz/pi-factory";
+import {
+  runtimeConfigPaths,
+  writePiRuntimeConfig,
+  type PiAppDefinition,
+} from "@osolmaz/pi-factory";
 
-import { regularPiAuthPath } from "./auth-path.js";
+import { regularPiAgentDir, regularPiAuthPath } from "./auth-path.js";
 import { recordParentTermination } from "./lifecycle-receipt.js";
 import { PiEventCollector, type PiRunMetrics } from "./pi-events.js";
 import { parseReviewOutput } from "./review-output.js";
@@ -50,7 +55,9 @@ export async function runReview(input: RunReviewInput): Promise<ReviewOutput> {
     input.hardFinalizationGraceMs,
   );
   const app = selectAppModel(input.app, input.selection, input.modelManifest);
-  const runtime = await writePiRuntimeConfig(app);
+  const runtime =
+    input.modelManifest === undefined ? runtimeConfigPaths(app) : await writePiRuntimeConfig(app);
+  await mkdir(runtime.configDir, { recursive: true, mode: 0o700 });
   const extension = app.extensions?.[0];
   if (extension === undefined) throw new Error("Pi Reviewer extension is not configured");
   if (app.systemPrompt === undefined)
@@ -60,7 +67,13 @@ export async function runReview(input: RunReviewInput): Promise<ReviewOutput> {
     app,
     extension.path,
     app.systemPrompt,
-    runtime.modelsPath,
+    input.modelManifest === undefined
+      ? { source: "pi", agentDir: regularPiAgentDir() }
+      : {
+          source: "custom",
+          authPath: regularPiAuthPath(),
+          modelsPath: runtime.modelsPath,
+        },
     runtime.configDir,
     policy,
   );
@@ -81,7 +94,7 @@ function createWorkerRequest(
   app: PiAppDefinition,
   extensionPath: string,
   systemPrompt: string,
-  modelsPath: string,
+  runtime: ReviewWorkerRequest["runtime"],
   configDir: string,
   policy: ReviewTimePolicy,
 ): ReviewWorkerRequest {
@@ -89,14 +102,12 @@ function createWorkerRequest(
     version: 1,
     cwd: input.cwd,
     prompt: input.prompt,
-    authPath: regularPiAuthPath(),
-    modelsPath,
+    runtime,
     configDir,
     extensionPath,
     systemPrompt,
     provider: input.selection.provider,
     model: input.selection.model,
-    customModel: input.modelManifest !== undefined,
     ...sessionRequestOptions(input),
     maxModelRequests: input.maxModelRequests ?? null,
     timeBudgetMs: policy.timeBudgetMs,

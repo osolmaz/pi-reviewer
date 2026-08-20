@@ -8,14 +8,12 @@ const REQUEST = {
   version: 1,
   cwd: "/repo",
   prompt: "Review",
-  authPath: "/pi/auth.json",
-  modelsPath: "/reviewer/models.json",
+  runtime: { source: "pi", agentDir: "/pi" },
   configDir: "/reviewer",
   extensionPath: "/reviewer/review-guard.ts",
   systemPrompt: "Review code",
   provider: "openai-codex",
   model: "review-model",
-  customModel: false,
   persistSession: true,
   sessionDir: "/reviewer/sessions",
   sessionReceipt: "/reviewer/session.json",
@@ -44,8 +42,11 @@ describe("review worker protocol", () => {
       "thinking level",
     );
     expect(() => validateWorkerRequest({ ...REQUEST, tools: [""] })).toThrow("nonempty strings");
-    expect(() => validateWorkerRequest({ ...REQUEST, customModel: "yes" })).toThrow(
-      "customModel is required",
+    expect(() =>
+      validateWorkerRequest({ ...REQUEST, runtime: { source: "pi", agentDir: "/pi", secret: 1 } }),
+    ).toThrow("runtime has unknown field");
+    expect(() => validateWorkerRequest({ ...REQUEST, runtime: { source: "other" } })).toThrow(
+      "runtime source",
     );
     expect(() => validateWorkerRequest({ ...REQUEST, persistSession: "yes" })).toThrow(
       "persistSession is required",

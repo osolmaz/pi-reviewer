@@ -127,13 +127,17 @@ describe("Pi Reviewer app", () => {
       lifecycleReceipt: null,
       hardFinalizationGraceMs: 2 * 60_000,
     });
-    expect(request["authPath"]).toBe(regularPiAuthPath());
-    expect(request["authPath"]).not.toBe(path.join(fake.root, "overridden-agent", "auth.json"));
+    expect(request["runtime"]).toEqual({
+      source: "pi",
+      agentDir: path.dirname(regularPiAuthPath()),
+    });
+    expect(request).not.toHaveProperty("authPath");
+    expect(request).not.toHaveProperty("modelsPath");
     expect(await readFile(fake.offlineFile, "utf8")).toBe("1");
     await expect(readFile(path.join(stateDir, "sessions", "session.jsonl"))).rejects.toThrow();
   });
 
-  it("passes regular Pi auth to the worker while keeping app config isolated", async () => {
+  it("passes the main Pi agent directory while keeping app config isolated", async () => {
     const fake = await fakePi();
     vi.stubEnv("PI_FACTORY_STATE_DIR", path.join(fake.root, "factory-state"));
     vi.stubEnv("PI_CODING_AGENT_DIR", path.join(fake.root, "overridden-agent"));
@@ -159,8 +163,12 @@ describe("Pi Reviewer app", () => {
     });
 
     const request = JSON.parse(await readFile(fake.argsFile, "utf8")) as Record<string, unknown>;
-    expect(request["authPath"]).toBe(regularPiAuthPath());
-    expect(request["modelsPath"]).toBe(path.join(stateDir, "pi-config-runtime", "models.json"));
+    expect(request["runtime"]).toEqual({
+      source: "pi",
+      agentDir: path.dirname(regularPiAuthPath()),
+    });
+    expect(request).not.toHaveProperty("authPath");
+    expect(request).not.toHaveProperty("modelsPath");
     expect(request["configDir"]).toBe(path.join(stateDir, "pi-config-runtime"));
     expect(request["persistSession"]).toBe(true);
     expect(request["sessionDir"]).toBe(path.join(stateDir, "sessions"));

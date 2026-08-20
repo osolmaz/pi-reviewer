@@ -18,5 +18,8 @@ source = "pi"
 id = "unconfigured"
 reasoning = true
 
+[inherit]
+providers = ["unconfigured"]
+
 [[extensions]]
 path = "reviewer/extensions/review-guard.ts"

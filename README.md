@@ -41,14 +41,20 @@ The optional user config lives at `~/.config/pi-reviewer/config.json`. A command
 pi-reviewer --model openai-codex/gpt-5.6-sol --thinking high --base main
 ```
 
-Pi Reviewer uses regular Pi's canonical `auth.json` directly:
+Pi Reviewer selects the provider implementation, model data, and existing authentication from the
+main Pi profile:
 
 ```bash
 pi-reviewer models gpt-5.6
-pi-reviewer login openai-codex
 ```
 
-Reviewer config records `auth: "pi"`. Model settings, prompts, tools, and session policy remain isolated. Login and OAuth refreshes update regular Pi's canonical auth file without copying credentials.
+The model in Reviewer config applies only to Pi Reviewer. It does not change normal Pi's selected
+provider or model. Prompts, tools, context files, sessions, repository policy, and review lifecycle
+remain isolated.
+
+Credentials stay in regular Pi's canonical `auth.json` or the selected provider's existing store. If
+a selected provider package owns authentication, authenticate it through normal Pi. `pi-reviewer
+login` does not create a single canonical credential as a fallback.
 
 Hugging Face Inference Providers models work through regular Pi's Hugging Face OAuth from `pi-huggingface-oauth`, including route-suffixed model identifiers discovered by regular Pi. The reviewer registers the same OAuth provider in its isolated runtime and reads regular Pi's model catalog cache in place.
 
@@ -57,7 +63,9 @@ pi-reviewer config set model huggingface/moonshotai/Kimi-K3:fireworks-ai
 pi-reviewer config set thinking high
 ```
 
-If the canonical auth file has no Hugging Face credential yet, run `pi-reviewer login huggingface` or regular Pi's Hugging Face login once. Both write the same canonical credential through regular Pi's auth file. Token refreshes stay shared through that file, so the reviewer never holds its own copy.
+If the canonical auth file has no Hugging Face credential yet, run `pi-reviewer login huggingface` or
+regular Pi's Hugging Face login once. Both use the same canonical credential. Token refreshes stay
+shared through that file, so the reviewer never holds its own copy.
 
 For a model that is not yet in Pi's catalog, pass a strict model manifest. The selected provider and model must match the manifest. `apiKeyEnv` names an environment variable; the manifest does not contain the credential.
 
