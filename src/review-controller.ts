@@ -81,6 +81,13 @@ export async function runThreePhaseReview(
   input.lifecycle.transition("quiescing_before_soft", reason);
   const preSoftQuiescence = await quiesce(input, "pre_soft_quiescence_failed");
   if (preSoftQuiescence !== undefined) return preSoftQuiescence;
+  if (input.gate.hasSubmission()) {
+    input.lifecycle.transition(
+      "soft_finalizing",
+      "exploration_submission_settled_during_quiescence",
+    );
+    return await finishAccepted(input, "exploration_submission");
+  }
   void exploration.then(
     () => undefined,
     () => undefined,
@@ -114,6 +121,10 @@ export async function runThreePhaseReview(
   input.lifecycle.transition("quiescing_before_hard", softReason);
   const preHardQuiescence = await quiesce(input, "pre_hard_quiescence_failed");
   if (preHardQuiescence !== undefined) return preHardQuiescence;
+  if (input.gate.hasSubmission()) {
+    input.lifecycle.transition("hard_finalizing", "soft_submission_settled_during_quiescence");
+    return await finishAccepted(input, "soft_submission");
+  }
   void soft.then(
     () => undefined,
     () => undefined,

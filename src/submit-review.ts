@@ -77,6 +77,10 @@ export class ReviewSubmissionGate {
     return this.acceptedValue === undefined ? 0 : 1;
   }
 
+  hasSubmission(): boolean {
+    return this.acceptedValue !== undefined;
+  }
+
   accept(value: unknown): ReviewSubmission {
     if (this.acceptedValue !== undefined) throw new Error("submit_review may be called only once");
     const parsed = parseReviewOutput(JSON.stringify(value), this.cwd);

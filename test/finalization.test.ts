@@ -224,6 +224,60 @@ describe("review lifecycle", () => {
     ]);
   });
 
+  it("keeps submissions that settle during either quiescence boundary", async () => {
+    for (const acceptOnAbort of [1, 2]) {
+      const sessionManager = SessionManager.inMemory("/repo");
+      sessionManager.appendMessage({ role: "user", content: "explore", timestamp: 1 });
+      const gate = new ReviewSubmissionGate("/repo");
+      let aborts = 0;
+      const session = {
+        prompt: () => Promise.resolve(),
+        subscribe: () => () => undefined,
+        clearQueue: () => ({ steering: [], followUp: [] }),
+        abort: () => {
+          aborts += 1;
+          if (aborts === acceptOnAbort) {
+            gate.accept({
+              findings: [],
+              overall_correctness: "patch is correct",
+              overall_explanation: "No defect found.",
+              overall_confidence_score: 0.9,
+            });
+          }
+          return Promise.resolve();
+        },
+        waitForIdle: () => Promise.resolve(),
+        isIdle: true,
+      } as unknown as AgentSession;
+      const lifecycle = new ReviewLifecycle();
+      const hardFinalize = vi.fn(() => Promise.reject(new Error("hard finalization must not run")));
+      const result = await runThreePhaseReview(
+        {
+          session,
+          sessionManager,
+          eventBus: createEventBus(),
+          policy: {
+            timeBudgetMs: 60_000,
+            warningRemainingMs: [],
+            finalizationGraceMs: 60_000,
+            hardFinalizationGraceMs: 60_000,
+          },
+          maxModelRequests: null,
+          gate,
+          lifecycle,
+          evidence: new LifecycleEvidence(lifecycle, null),
+          recordStablePrefix: () => undefined,
+          hardFinalize,
+        },
+        "review",
+      );
+      expect(result).toEqual({ forcedExitRequired: false });
+      expect(gate.acceptedCallCount).toBe(1);
+      expect(hardFinalize).not.toHaveBeenCalled();
+      expect(lifecycle.transitions.map((entry) => entry.to)).toContain("accepted");
+    }
+  });
+
   it("records ordered timestamps and operational events", () => {
     let milliseconds = 0;
     const lifecycle = new ReviewLifecycle(() => new Date((milliseconds += 1)));
