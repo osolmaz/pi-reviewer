@@ -252,6 +252,44 @@ describe("forced submission turn", () => {
     });
   });
 
+  it("persists and reports a billed hard response before validation rejects it", async () => {
+    const { manager, preSoftLeafId, evidence } = await fixture();
+    const invalid = {
+      ...assistant(),
+      content: [{ type: "text" as const, text: "prose instead of submit_review" }],
+      stopReason: "stop" as const,
+    };
+    const { runtime } = runtimeWith(() => completedStream(invalid));
+    let metricMessages = 0;
+    const result = await runForcedSubmissionTurn({
+      modelRuntime: runtime,
+      model: MODEL,
+      sessionManager: manager,
+      preSoftLeafId,
+      systemPrompt: "system",
+      tools: TOOLS,
+      finalizationPrompt: "finalize",
+      gate: new ReviewSubmissionGate(manager.getCwd()),
+      evidence,
+      deadlineMs: 100,
+      sessionId: "session-1",
+      onAssistant: (message) => {
+        metricMessages += 1;
+        evidence.recordAssistant(message);
+      },
+    });
+    expect(result.kind).toBe("failed");
+    expect(metricMessages).toBe(1);
+    expect(evidence.snapshot().responses).toHaveLength(1);
+    expect(
+      manager
+        .getBranch()
+        .slice(-2)
+        .map((entry) => (entry.type === "message" ? entry.message.role : entry.type)),
+    ).toEqual(["user", "assistant"]);
+    expect(JSON.stringify(manager.getBranch())).toContain("prose instead of submit_review");
+  });
+
   it("serializes named tool choice and reasoning-off through the pinned public adapter", async () => {
     let payload: unknown;
     const options: ExplicitOffOptions = {

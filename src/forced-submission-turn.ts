@@ -173,6 +173,13 @@ export async function runForcedSubmissionTurn(
         true,
       );
     }
+    if (cancellation.kind === "settled") {
+      try {
+        persistHardAssistant(input, userMessage, cancellation.value);
+      } catch (error) {
+        return failed(asError(error));
+      }
+    }
     return failed(
       new Error("hard finalization exceeded its request deadline", {
         ...(cancellation.kind === "rejected" ? { cause: cancellation.error } : {}),
@@ -205,12 +212,12 @@ export async function runForcedSubmissionTurn(
     message: assistant,
   });
 
+  let persisted: { readonly userEntryId: string; readonly assistantEntryId: string };
   try {
+    persisted = persistHardAssistant(input, userMessage, assistant);
     attestAssistantRoute(assistant, input.model);
     const call = requireSingleSubmissionCall(assistant);
     const submission = input.gate.accept(call.arguments);
-    const userEntryId = input.sessionManager.appendMessage(userMessage);
-    const assistantEntryId = input.sessionManager.appendMessage(assistant);
     const toolResult: ToolResultMessage = {
       role: "toolResult",
       toolCallId: call.id,
@@ -221,8 +228,7 @@ export async function runForcedSubmissionTurn(
       timestamp: now().getTime(),
     };
     const toolResultEntryId = input.sessionManager.appendMessage(toolResult);
-    input.onAssistant?.(assistant);
-    return { kind: "accepted", assistant, userEntryId, assistantEntryId, toolResultEntryId };
+    return { kind: "accepted", assistant, ...persisted, toolResultEntryId };
   } catch (error) {
     return failed(asError(error));
   }
@@ -339,6 +345,17 @@ function setHardEvidence(
     streamedCharacters: values.streamedCharacters,
   };
   input.evidence.setHardRequest(evidence);
+}
+
+function persistHardAssistant(
+  input: ForcedSubmissionInput,
+  userMessage: UserMessage,
+  assistant: AssistantMessage,
+): { readonly userEntryId: string; readonly assistantEntryId: string } {
+  const userEntryId = input.sessionManager.appendMessage(userMessage);
+  const assistantEntryId = input.sessionManager.appendMessage(assistant);
+  input.onAssistant?.(assistant);
+  return { userEntryId, assistantEntryId };
 }
 
 function attestAssistantRoute(message: AssistantMessage, model: Model<Api>): void {
