@@ -6,7 +6,7 @@ export type NamedSubmitReviewChoice = {
   readonly function: { readonly name: "submit_review" };
 };
 
-const NAMED_TOOL_CHOICE_APIS = new Set(["openai-completions"]);
+const NAMED_TOOL_CHOICE_APIS = new Set(["openai-completions", "pi-messages"]);
 
 export function requireForcedSubmissionCapability(
   modelRuntime: Pick<ModelRuntime, "getProvider">,

@@ -42,7 +42,8 @@ export type ForcedSubmissionResult =
     }
   | { readonly kind: "failed"; readonly error: Error; readonly forcedExitRequired: boolean };
 
-type ForcedSimpleOptions = ModelsSimpleStreamOptions & {
+type ForcedSimpleOptions = Omit<ModelsSimpleStreamOptions, "reasoning"> & {
+  readonly reasoning: "off";
   readonly toolChoice: NamedSubmitReviewChoice;
 };
 
@@ -121,6 +122,7 @@ export async function runForcedSubmissionTurn(
     maxRetries: 0,
     maxTokens: HARD_FINALIZATION_MAX_TOKENS,
     sessionId: input.sessionId,
+    reasoning: "off",
     toolChoice,
     onResponse: () => {
       responseHeaderAt ??= now().toISOString();
@@ -129,7 +131,13 @@ export async function runForcedSubmissionTurn(
 
   let stream;
   try {
-    stream = input.modelRuntime.streamSimple(input.model, context, options);
+    // Pi AI 0.84.2 adapters publicly support the model-level "off" value, but the
+    // generic streamSimple option type narrows reasoning to enabled levels only.
+    stream = input.modelRuntime.streamSimple(
+      input.model,
+      context,
+      options as unknown as ModelsSimpleStreamOptions,
+    );
   } catch (error) {
     return failed(asError(error));
   }

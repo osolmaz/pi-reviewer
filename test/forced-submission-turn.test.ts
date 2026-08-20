@@ -14,6 +14,7 @@ import {
   Type,
 } from "@earendil-works/pi-ai";
 import { streamSimple as streamOpenAICompletions } from "@earendil-works/pi-ai/api/openai-completions";
+import { streamSimple as streamPiMessages } from "@earendil-works/pi-ai/api/pi-messages";
 import { SessionManager, type ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -39,6 +40,19 @@ const MODEL: Model<"openai-completions"> = {
   contextWindow: 131_072,
   maxTokens: 16_384,
 };
+const PI_MESSAGES_MODEL: Model<"pi-messages"> = {
+  id: MODEL.id,
+  name: MODEL.name,
+  api: "pi-messages",
+  provider: MODEL.provider,
+  baseUrl: MODEL.baseUrl,
+  reasoning: MODEL.reasoning,
+  input: MODEL.input,
+  cost: MODEL.cost,
+  contextWindow: MODEL.contextWindow,
+  maxTokens: MODEL.maxTokens,
+};
+
 const TOOLS = [
   { name: "read", description: "Read", parameters: Type.Object({ path: Type.String() }) },
   {
@@ -47,6 +61,11 @@ const TOOLS = [
     parameters: Type.Object({ findings: Type.Array(Type.Unknown()) }),
   },
 ] as const;
+type ExplicitOffOptions = Omit<SimpleStreamOptions, "reasoning"> & {
+  reasoning: "off";
+  toolChoice: { type: "function"; function: { name: string } };
+};
+
 const SUBMISSION = {
   findings: [],
   overall_correctness: "patch is correct",
@@ -200,7 +219,7 @@ describe("forced submission turn", () => {
       type: "function",
       function: { name: "submit_review" },
     });
-    expect(captured.options).not.toHaveProperty("reasoning");
+    expect(captured.options).toHaveProperty("reasoning", "off");
     expect(hardMessage?.responseModel).toBe("served-review-model");
     expect(hardMetricMessages).toBe(1);
 
@@ -235,10 +254,9 @@ describe("forced submission turn", () => {
 
   it("serializes named tool choice and reasoning-off through the pinned public adapter", async () => {
     let payload: unknown;
-    const options: SimpleStreamOptions & {
-      toolChoice: { type: "function"; function: { name: string } };
-    } = {
+    const options: ExplicitOffOptions = {
       apiKey: "test-only",
+      reasoning: "off",
       maxRetries: 0,
       maxTokens: HARD_FINALIZATION_MAX_TOKENS,
       toolChoice: { type: "function", function: { name: "submit_review" } },
@@ -254,7 +272,7 @@ describe("forced submission turn", () => {
         messages: [{ role: "user", content: "finalize", timestamp: 1 }],
         tools: [...TOOLS],
       },
-      options,
+      options as unknown as SimpleStreamOptions,
     );
     for await (const event of stream) {
       expect(event.type).toBe("error");
@@ -271,6 +289,38 @@ describe("forced submission turn", () => {
     expect(payload).not.toHaveProperty("reasoning_effort");
   });
 
+  it("serializes explicit reasoning-off and named tool choice through Pi Messages", async () => {
+    let payload: unknown;
+    const options: ExplicitOffOptions = {
+      apiKey: "test-only",
+      reasoning: "off",
+      maxRetries: 0,
+      maxTokens: HARD_FINALIZATION_MAX_TOKENS,
+      toolChoice: { type: "function", function: { name: "submit_review" } },
+      onPayload: (value) => {
+        payload = value;
+        throw new Error("payload captured before dispatch");
+      },
+    };
+    const stream = streamPiMessages(
+      PI_MESSAGES_MODEL,
+      {
+        systemPrompt: "system",
+        messages: [{ role: "user", content: "finalize", timestamp: 1 }],
+        tools: [...TOOLS],
+      },
+      options as unknown as SimpleStreamOptions,
+    );
+    for await (const event of stream) {
+      expect(event.type).toBe("error");
+    }
+    if (!isRecord(payload)) throw new Error("Pi Messages did not expose a request payload");
+    expect(payload["options"]).toMatchObject({
+      reasoning: "off",
+      toolChoice: { type: "function", function: { name: "submit_review" } },
+    });
+  });
+
   it("uses a measured bounded response allowance with a documented safety margin", () => {
     expect(LARGEST_MEASURED_VALID_REVIEW_BYTES).toBe(2_693);
     const conservativeMeasuredTokens = Math.ceil(LARGEST_MEASURED_VALID_REVIEW_BYTES / 2);
@@ -279,7 +329,7 @@ describe("forced submission turn", () => {
   });
 
   it("fails unsupported routes before network dispatch", async () => {
-    for (const api of ["anthropic-messages", "pi-messages"] as const) {
+    for (const api of ["anthropic-messages"] as const) {
       const { manager, preSoftLeafId, evidence } = await fixture();
       const { runtime, dispatch } = runtimeWith(() => completedStream());
       const result = await runForcedSubmissionTurn({
