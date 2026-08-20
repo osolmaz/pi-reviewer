@@ -4,22 +4,27 @@ import { toolUnavailableReason } from "../reviewer/extensions/review-guard.js";
 
 describe("review tool availability", () => {
   it("permits configured review tools during exploration", () => {
-    expect(toolUnavailableReason("read", false)).toBeUndefined();
-    expect(toolUnavailableReason("submit_review", false)).toBeUndefined();
+    expect(toolUnavailableReason("read", "exploring")).toBeUndefined();
+    expect(toolUnavailableReason("submit_review", "exploring")).toBeUndefined();
   });
 
-  it("blocks investigation tools without changing the active tool set", () => {
-    expect(toolUnavailableReason("read", true)).toBe(
+  it("blocks investigation tools during soft finalization without changing definitions", () => {
+    expect(toolUnavailableReason("read", "soft_finalizing")).toBe(
       "Tool read is unavailable during review finalization",
     );
-    expect(toolUnavailableReason("review_shell", true)).toBe(
+    expect(toolUnavailableReason("review_shell", "soft_finalizing")).toBe(
       "Tool review_shell is unavailable during review finalization",
     );
-    expect(toolUnavailableReason("submit_review", true)).toBeUndefined();
+    expect(toolUnavailableReason("submit_review", "soft_finalizing")).toBeUndefined();
+  });
+
+  it("blocks extension execution during direct hard finalization", () => {
+    expect(toolUnavailableReason("read", "hard_finalizing")).toContain("finalization");
+    expect(toolUnavailableReason("submit_review", "hard_finalizing")).toBeUndefined();
   });
 
   it("continues to reject tools outside read-only review mode", () => {
-    expect(toolUnavailableReason("write", false)).toBe(
+    expect(toolUnavailableReason("write", "exploring")).toBe(
       "Tool write is unavailable in read-only review mode",
     );
   });

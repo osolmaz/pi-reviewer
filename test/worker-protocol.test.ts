@@ -19,10 +19,12 @@ const REQUEST = {
   persistSession: true,
   sessionDir: "/reviewer/sessions",
   sessionReceipt: "/reviewer/session.json",
+  lifecycleReceipt: "/reviewer/lifecycle.json",
   maxModelRequests: null,
   timeBudgetMs: 1_800_000,
   warningRemainingMs: [900_000, 300_000],
   finalizationGraceMs: 600_000,
+  hardFinalizationGraceMs: 120_000,
   thinking: "high",
   tools: ["read", "review_shell"],
 } as const;
@@ -54,6 +56,9 @@ describe("review worker protocol", () => {
     expect(() => validateWorkerRequest({ ...REQUEST, sessionReceipt: "" })).toThrow(
       "sessionReceipt must be a nonempty string or null",
     );
+    expect(() => validateWorkerRequest({ ...REQUEST, lifecycleReceipt: "" })).toThrow(
+      "lifecycleReceipt must be a nonempty string or null",
+    );
     expect(() => validateWorkerRequest({ ...REQUEST, maxModelRequests: 101 })).toThrow(
       "between 1 and 100",
     );
@@ -66,6 +71,9 @@ describe("review worker protocol", () => {
     );
     expect(() => validateWorkerRequest({ ...REQUEST, finalizationGraceMs: 999 })).toThrow(
       "finalizationGraceMs",
+    );
+    expect(() => validateWorkerRequest({ ...REQUEST, hardFinalizationGraceMs: 999 })).toThrow(
+      "hardFinalizationGraceMs",
     );
   });
 

@@ -62,6 +62,7 @@ console.log(JSON.stringify({type:"agent_end", messages:[]}));
   return { root, command: [process.execPath, script], argsFile, offlineFile };
 }
 
+// eslint-disable-next-line max-lines-per-function
 describe("Pi Reviewer app", () => {
   it("loads the Pi Factory bundle without hard-coding a model in the extension", async () => {
     const fake = await fakePi();
@@ -123,6 +124,8 @@ describe("Pi Reviewer app", () => {
       persistSession: false,
       sessionDir: path.join(stateDir, "sessions"),
       sessionReceipt: null,
+      lifecycleReceipt: null,
+      hardFinalizationGraceMs: 2 * 60_000,
     });
     expect(request["authPath"]).toBe(regularPiAuthPath());
     expect(request["authPath"]).not.toBe(path.join(fake.root, "overridden-agent", "auth.json"));
@@ -161,9 +164,51 @@ describe("Pi Reviewer app", () => {
     expect(request["persistSession"]).toBe(true);
     expect(request["sessionDir"]).toBe(path.join(stateDir, "sessions"));
     expect(request["sessionReceipt"]).toBeNull();
+    expect(request["lifecycleReceipt"]).toBeNull();
     expect(request["timeBudgetMs"]).toBe(10 * 60_000);
     expect(request["warningRemainingMs"]).toEqual([5 * 60_000, 150_000]);
     expect(request["finalizationGraceMs"]).toBe(2 * 60_000);
+    expect(request["hardFinalizationGraceMs"]).toBe(2 * 60_000);
+  });
+
+  it("uses parent SIGTERM only after a worker flushes forced-exit evidence", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pi-reviewer-sigterm-"));
+    cleanup.push(root);
+    const script = path.join(root, "forced-worker.mjs");
+    await writeFile(
+      script,
+      `import { writeFileSync } from "node:fs";
+let input = "";
+for await (const chunk of process.stdin) input += chunk;
+const request = JSON.parse(input);
+writeFileSync(request.lifecycleReceipt, JSON.stringify({version:1,transitions:[],events:[],branches:{},submission:{acceptedCallCount:0},terminal:{complete:true,forcedExitRequired:true,parentTerminationMode:"pending"}}) + "\\n", {mode:0o600});
+console.log(JSON.stringify({type:"review_started"}));
+console.log(JSON.stringify({type:"shutdown_ready",forcedExitRequired:true,error:"forced cleanup"}));
+process.on("SIGTERM", () => process.exit(0));
+setInterval(() => {}, 1000);
+`,
+    );
+    await chmod(script, 0o755);
+    const loaded = await loadReviewerApp({ packageRoot, piCommand: [process.execPath, script] });
+    const lifecycleReceipt = path.join(root, "lifecycle.json");
+    const app = {
+      ...loaded,
+      stateDir: path.join(root, "state"),
+      sessionDir: path.join(root, "sessions"),
+    };
+    await expect(
+      runReview({
+        app,
+        selection: { provider: "openai-codex", model: "review-model", thinking: "high" },
+        cwd: root,
+        prompt: "Review",
+        lifecycleReceipt,
+      }),
+    ).rejects.toThrow("forced cleanup");
+    const receipt = JSON.parse(await readFile(lifecycleReceipt, "utf8")) as {
+      terminal: { parentTerminationMode: string };
+    };
+    expect(receipt.terminal.parentTerminationMode).toBe("sigterm");
   });
 
   it("force-kills a worker after its cleanup allowance", async () => {

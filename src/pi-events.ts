@@ -28,6 +28,8 @@ export class PiEventCollector {
   private readonly decoder = new StringDecoder("utf8");
   private finalText: string | undefined;
   private terminalError: string | undefined;
+  private parentTerminationRequired = false;
+  private parentTerminationError: string | undefined;
   private agentEnded = false;
   private reviewStarted = false;
   private requests = 0;
@@ -62,6 +64,14 @@ export class PiEventCollector {
 
   hasReviewStarted(): boolean {
     return this.reviewStarted;
+  }
+
+  requiresParentTermination(): boolean {
+    return this.parentTerminationRequired;
+  }
+
+  shutdownError(): string | undefined {
+    return this.parentTerminationError;
   }
 
   metrics(): PiRunMetrics {
@@ -114,6 +124,7 @@ export class PiEventCollector {
     if (type === "agent_end") this.agentEnded = true;
     if (type === "message_end") this.consumeMessage(value["message"]);
     if (type === "review_submission") this.consumeSubmission(value["review"]);
+    if (type === "shutdown_ready") this.consumeShutdownReady(value);
   }
 
   private consumeMessage(message: unknown): void {
@@ -132,6 +143,20 @@ export class PiEventCollector {
     if (this.finalText !== undefined) throw new Error("Pi emitted more than one review submission");
     this.finalText = text;
     this.terminalError = undefined;
+  }
+
+  private consumeShutdownReady(value: Readonly<Record<string, unknown>>): void {
+    if (value["forcedExitRequired"] !== true) {
+      throw new Error("Pi emitted an invalid shutdown_ready event");
+    }
+    if (this.parentTerminationRequired) {
+      throw new Error("Pi emitted more than one shutdown_ready event");
+    }
+    this.parentTerminationRequired = true;
+    this.parentTerminationError = optionalError(
+      value["error"],
+      "review worker requested parent termination",
+    );
   }
 
   private consumeMetrics(message: Readonly<Record<string, unknown>>): void {

@@ -30,6 +30,8 @@ describe("review arguments", () => {
         "/tmp/sessions",
         "--session-receipt",
         "/tmp/session.json",
+        "--lifecycle-receipt",
+        "/tmp/lifecycle.json",
         "--max-model-requests",
         "12",
         "--time-budget",
@@ -40,6 +42,8 @@ describe("review arguments", () => {
         "5m",
         "--finalization-grace",
         "10m",
+        "--hard-finalization-grace",
+        "2m",
         "--thinking",
         "high",
         "--format",
@@ -53,6 +57,7 @@ describe("review arguments", () => {
         metricsFile: "/tmp/metrics.json",
         sessionDir: "/tmp/sessions",
         sessionReceipt: "/tmp/session.json",
+        lifecycleReceipt: "/tmp/lifecycle.json",
         maxModelRequests: 12,
         timeBudgetMs: 1_800_000,
         timeWarnings: [
@@ -60,6 +65,7 @@ describe("review arguments", () => {
           { kind: "duration", milliseconds: 300_000 },
         ],
         finalizationGraceMs: 600_000,
+        hardFinalizationGraceMs: 120_000,
         thinking: "high",
         format: "json",
       },
@@ -112,6 +118,9 @@ describe("review arguments", () => {
     ).toThrow("cannot be combined");
     expect(() =>
       parseArgs(["--base", "main", "--no-session", "--session-dir", "/tmp/sessions"]),
+    ).toThrow("cannot be combined");
+    expect(() =>
+      parseArgs(["--base", "main", "--no-session", "--lifecycle-receipt", "/tmp/lifecycle"]),
     ).toThrow("cannot be combined");
   });
 

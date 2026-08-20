@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "task": "vllm-project-vllm-pr-15998-a800045d0e24",
+  "partialThinkingCharacters": 282800,
+  "explorationThinking": "high",
+  "finalizationThinking": "off",
+  "finalizationUserMessagePersisted": true,
+  "entriesAfterFinalizationMessage": 0,
+  "acceptedSubmissionCalls": 0,
+  "workerSettledDuringGrace": false,
+  "workerSettledDuringCleanup": false,
+  "parentTermination": "watchdog_sigkill",
+  "artifactsPreserved": true
+}

@@ -113,23 +113,36 @@ async function runReviewCommand(request: ReviewRequest): Promise<number> {
 
 function budgetRunOptions(
   request: ReviewRequest,
-): Partial<Pick<RunReviewInput, "timeBudgetMs" | "timeWarnings" | "finalizationGraceMs">> {
+): Partial<
+  Pick<
+    RunReviewInput,
+    "timeBudgetMs" | "timeWarnings" | "finalizationGraceMs" | "hardFinalizationGraceMs"
+  >
+> {
   return {
     ...(request.timeBudgetMs === undefined ? {} : { timeBudgetMs: request.timeBudgetMs }),
     ...(request.timeWarnings === undefined ? {} : { timeWarnings: request.timeWarnings }),
     ...(request.finalizationGraceMs === undefined
       ? {}
       : { finalizationGraceMs: request.finalizationGraceMs }),
+    ...(request.hardFinalizationGraceMs === undefined
+      ? {}
+      : { hardFinalizationGraceMs: request.hardFinalizationGraceMs }),
   };
 }
 
 function sessionRunOptions(
   request: ReviewRequest,
-): Partial<Pick<RunReviewInput, "persistSession" | "sessionDir" | "sessionReceipt">> {
+): Partial<
+  Pick<RunReviewInput, "persistSession" | "sessionDir" | "sessionReceipt" | "lifecycleReceipt">
+> {
   return {
     ...(request.persistSession === undefined ? {} : { persistSession: request.persistSession }),
     ...(request.sessionDir === undefined ? {} : { sessionDir: request.sessionDir }),
     ...(request.sessionReceipt === undefined ? {} : { sessionReceipt: request.sessionReceipt }),
+    ...(request.lifecycleReceipt === undefined
+      ? {}
+      : { lifecycleReceipt: request.lifecycleReceipt }),
   };
 }
 

@@ -58,11 +58,13 @@ export type ReviewRequest = {
   readonly metricsFile?: string;
   readonly sessionDir?: string;
   readonly sessionReceipt?: string;
+  readonly lifecycleReceipt?: string;
   readonly persistSession?: boolean;
   readonly maxModelRequests?: number;
   readonly timeBudgetMs?: number;
   readonly timeWarnings?: readonly TimeWarning[];
   readonly finalizationGraceMs?: number;
+  readonly hardFinalizationGraceMs?: number;
   readonly thinking?: ThinkingLevel;
   readonly format?: OutputFormat;
 };

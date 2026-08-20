@@ -30,10 +30,12 @@ const REQUEST = {
   persistSession: false,
   sessionDir: "/sessions",
   sessionReceipt: null,
+  lifecycleReceipt: null,
   maxModelRequests: null,
   timeBudgetMs: 10 * 60_000,
   warningRemainingMs: [5 * 60_000, 150_000],
   finalizationGraceMs: 2 * 60_000,
+  hardFinalizationGraceMs: 2 * 60_000,
   thinking: "high",
   tools: ["read"],
 } satisfies ReviewWorkerRequest;
@@ -196,7 +198,7 @@ describe("review worker events", () => {
         },
         prompt: (prompt) => {
           calls.push(`prompt:${prompt}`);
-          return Promise.resolve();
+          return Promise.resolve({ forcedExitRequired: false });
         },
         submission: () => SUBMISSION,
         dispose: () => calls.push("dispose"),
@@ -215,7 +217,7 @@ describe("review worker events", () => {
       runReviewWorker(REQUEST, () =>
         Promise.resolve({
           subscribe: () => () => calls.push("unsubscribe"),
-          prompt: () => Promise.resolve(),
+          prompt: () => Promise.resolve({ forcedExitRequired: false }),
           submission: () => undefined,
           dispose: () => calls.push("dispose"),
           flush: () => {

@@ -3,6 +3,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { writePiRuntimeConfig, type PiAppDefinition } from "@osolmaz/pi-factory";
 
 import { regularPiAuthPath } from "./auth-path.js";
+import { recordParentTermination } from "./lifecycle-receipt.js";
 import { PiEventCollector, type PiRunMetrics } from "./pi-events.js";
 import { parseReviewOutput } from "./review-output.js";
 import {
@@ -28,10 +29,12 @@ export type RunReviewInput = {
   readonly persistSession?: boolean;
   readonly sessionDir?: string;
   readonly sessionReceipt?: string;
+  readonly lifecycleReceipt?: string;
   readonly maxModelRequests?: number;
   readonly timeBudgetMs?: number;
   readonly timeWarnings?: readonly TimeWarning[];
   readonly finalizationGraceMs?: number;
+  readonly hardFinalizationGraceMs?: number;
   readonly cwd: string;
   readonly prompt: string;
   readonly stderr?: NodeJS.WritableStream;
@@ -43,6 +46,7 @@ export async function runReview(input: RunReviewInput): Promise<ReviewOutput> {
     input.timeBudgetMs,
     input.timeWarnings,
     input.finalizationGraceMs,
+    input.hardFinalizationGraceMs,
   );
   const app = selectAppModel(input.app, input.selection, input.modelManifest);
   const runtime = await writePiRuntimeConfig(app);
@@ -66,6 +70,7 @@ export async function runReview(input: RunReviewInput): Promise<ReviewOutput> {
     input.stderr,
     input.onMetrics,
     workerWatchdogTimeoutMs(policy),
+    request.lifecycleReceipt,
   );
   return parseReviewOutput(finalText, input.cwd);
 }
@@ -96,6 +101,7 @@ function createWorkerRequest(
     timeBudgetMs: policy.timeBudgetMs,
     warningRemainingMs: policy.warningRemainingMs,
     finalizationGraceMs: policy.finalizationGraceMs,
+    hardFinalizationGraceMs: policy.hardFinalizationGraceMs,
     thinking: input.selection.thinking,
     tools: app.tools?.split(",").filter((tool) => tool !== "") ?? [],
   };
@@ -103,15 +109,22 @@ function createWorkerRequest(
 
 function sessionRequestOptions(
   input: RunReviewInput,
-): Pick<ReviewWorkerRequest, "persistSession" | "sessionDir" | "sessionReceipt"> {
+): Pick<
+  ReviewWorkerRequest,
+  "persistSession" | "sessionDir" | "sessionReceipt" | "lifecycleReceipt"
+> {
   const persistSession = input.persistSession ?? true;
-  if (!persistSession && input.sessionReceipt !== undefined) {
-    throw new Error("session receipt requires persistent sessions");
+  if (
+    !persistSession &&
+    (input.sessionReceipt !== undefined || input.lifecycleReceipt !== undefined)
+  ) {
+    throw new Error("session and lifecycle receipts require persistent sessions");
   }
   return {
     persistSession,
     sessionDir: input.sessionDir ?? input.app.sessionDir,
     sessionReceipt: input.sessionReceipt ?? null,
+    lifecycleReceipt: input.lifecycleReceipt ?? null,
   };
 }
 
@@ -122,6 +135,7 @@ async function executeWorker(
   stderr: NodeJS.WritableStream | undefined,
   onMetrics: ((metrics: PiRunMetrics) => void) | undefined,
   watchdogTimeoutMs: number,
+  lifecycleReceipt: string | null,
 ): Promise<string> {
   const [program, ...args] = command;
   if (program === undefined) throw new Error("Pi Reviewer worker command is empty");
@@ -140,24 +154,30 @@ async function executeWorker(
     stdio: ["pipe", "pipe", "pipe"],
   });
   child.stdin.end(JSON.stringify(request));
-  return await collectChild(child, stderr, onMetrics, watchdogTimeoutMs);
+  return await collectChild(child, stderr, onMetrics, watchdogTimeoutMs, lifecycleReceipt);
 }
 
+// eslint-disable-next-line max-lines-per-function -- Keep child signals, streams, timers, and cleanup in one owner.
 async function collectChild(
   child: ChildProcessWithoutNullStreams,
   stderr: NodeJS.WritableStream | undefined,
   onMetrics: ((metrics: PiRunMetrics) => void) | undefined,
   watchdogTimeoutMs: number,
+  lifecycleReceipt: string | null,
 ): Promise<string> {
   const collector = new PiEventCollector();
   let stderrBytes = 0;
   let failure: Error | undefined;
   let killTimer: NodeJS.Timeout | undefined;
   let watchdogTimer: NodeJS.Timeout | undefined;
+  let terminationMode: "normal" | "sigterm" | "sigkill" = "normal";
+  let shutdownRequested = false;
   const terminate = (message: string): void => {
     failure ??= new Error(message);
+    terminationMode = "sigterm";
     terminateProcess(child);
     killTimer ??= setTimeout(() => {
+      terminationMode = "sigkill";
       terminateProcess(child, true);
     }, TERMINATION_GRACE_MS);
   };
@@ -172,6 +192,7 @@ async function collectChild(
   };
   process.once("SIGINT", onInterrupt);
   process.once("SIGTERM", onTerminate);
+  // eslint-disable-next-line complexity -- Process each bounded worker event and its state-dependent cleanup together.
   child.stdout.on("data", (chunk: Buffer) => {
     try {
       const reviewWasStarted = collector.hasReviewStarted();
@@ -180,7 +201,12 @@ async function collectChild(
         if (watchdogTimer !== undefined) clearTimeout(watchdogTimer);
         watchdogTimer = scheduleWorkerWatchdog(child, watchdogTimeoutMs, (error) => {
           failure ??= error;
+          terminationMode = "sigkill";
         });
+      }
+      if (!shutdownRequested && collector.requiresParentTermination()) {
+        shutdownRequested = true;
+        terminate(collector.shutdownError() ?? "review worker requested parent termination");
       }
       onMetrics?.(collector.metrics());
     } catch (error) {
@@ -200,20 +226,25 @@ async function collectChild(
       failure = error;
     });
     child.on("close", (code, signal) => {
-      if (watchdogTimer !== undefined) clearTimeout(watchdogTimer);
-      if (killTimer !== undefined) clearTimeout(killTimer);
-      process.removeListener("SIGINT", onInterrupt);
-      process.removeListener("SIGTERM", onTerminate);
-      if (failure !== undefined) reject(failure);
-      else if (signal !== null) reject(new Error(`Pi terminated by ${signal}`));
-      else if (code !== 0) reject(new Error(`Pi exited with status ${String(code)}`));
-      else {
-        try {
-          resolve(collector.finish().finalText);
-        } catch (error) {
-          reject(error instanceof Error ? error : new Error(String(error)));
+      void (async () => {
+        if (watchdogTimer !== undefined) clearTimeout(watchdogTimer);
+        if (killTimer !== undefined) clearTimeout(killTimer);
+        process.removeListener("SIGINT", onInterrupt);
+        process.removeListener("SIGTERM", onTerminate);
+        await recordParentTermination(lifecycleReceipt, terminationMode);
+        if (failure !== undefined) reject(failure);
+        else if (signal !== null) reject(new Error(`Pi terminated by ${signal}`));
+        else if (code !== 0) reject(new Error(`Pi exited with status ${String(code)}`));
+        else {
+          try {
+            resolve(collector.finish().finalText);
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
         }
-      }
+      })().catch((error: unknown) => {
+        reject(error instanceof Error ? error : new Error(String(error)));
+      });
     });
   });
 }

@@ -28,11 +28,13 @@ type ReviewFields = {
   metricsFile?: string;
   sessionDir?: string;
   sessionReceipt?: string;
+  lifecycleReceipt?: string;
   persistSession?: boolean;
   maxModelRequests?: number;
   timeBudgetMs?: number;
   timeWarnings: TimeWarning[];
   finalizationGraceMs?: number;
+  hardFinalizationGraceMs?: number;
   thinking?: ThinkingLevel;
   format?: OutputFormat;
   title?: string;
@@ -138,6 +140,7 @@ function sessionOptions(fields: ReviewFields): Omit<ReviewRequest, "target" | "c
   return {
     ...(fields.sessionDir === undefined ? {} : { sessionDir: fields.sessionDir }),
     ...(fields.sessionReceipt === undefined ? {} : { sessionReceipt: fields.sessionReceipt }),
+    ...(fields.lifecycleReceipt === undefined ? {} : { lifecycleReceipt: fields.lifecycleReceipt }),
     ...(fields.persistSession === undefined ? {} : { persistSession: fields.persistSession }),
   };
 }
@@ -149,6 +152,9 @@ function budgetOptions(fields: ReviewFields): Omit<ReviewRequest, "target" | "cw
     ...(fields.finalizationGraceMs === undefined
       ? {}
       : { finalizationGraceMs: fields.finalizationGraceMs }),
+    ...(fields.hardFinalizationGraceMs === undefined
+      ? {}
+      : { hardFinalizationGraceMs: fields.hardFinalizationGraceMs }),
   };
 }
 
@@ -167,7 +173,11 @@ function assertTitleTarget(fields: ReviewFields): void {
 
 function assertSessionOptions(fields: ReviewFields): void {
   if (fields.persistSession !== false) return;
-  if (fields.sessionDir !== undefined || fields.sessionReceipt !== undefined) {
+  if (
+    fields.sessionDir !== undefined ||
+    fields.sessionReceipt !== undefined ||
+    fields.lifecycleReceipt !== undefined
+  ) {
     throw new Error("--no-session cannot be combined with session output options");
   }
 }
@@ -231,6 +241,7 @@ function consumeExecutionOption(
   else if (arg === "--metrics-file") fields.metricsFile = requiredValue(next, arg);
   else if (arg === "--session-dir") fields.sessionDir = requiredValue(next, arg);
   else if (arg === "--session-receipt") fields.sessionReceipt = requiredValue(next, arg);
+  else if (arg === "--lifecycle-receipt") fields.lifecycleReceipt = requiredValue(next, arg);
   else if (arg === "--max-model-requests") {
     fields.maxModelRequests = validateMaxModelRequests(requiredValue(next, arg));
   } else return false;
@@ -244,6 +255,11 @@ function consumeBudgetOption(fields: ReviewFields, arg: string, next: string | u
     fields.timeWarnings.push(validateTimeWarning(requiredValue(next, arg)));
   } else if (arg === "--finalization-grace") {
     fields.finalizationGraceMs = validateDuration(requiredValue(next, arg), "finalization grace");
+  } else if (arg === "--hard-finalization-grace") {
+    fields.hardFinalizationGraceMs = validateDuration(
+      requiredValue(next, arg),
+      "hard finalization grace",
+    );
   } else return false;
   return true;
 }
@@ -329,5 +345,5 @@ function required(value: string | undefined, message: string): string {
 }
 
 export function reviewUsage(): string {
-  return "usage: pi-reviewer (--uncommitted | --base BRANCH | --commit SHA | INSTRUCTIONS) [--model PROVIDER/MODEL] [--model-manifest PATH] [--metrics-file PATH] [--session-dir DIR] [--session-receipt PATH] [--no-session] [--max-model-requests N] [--time-budget DURATION] [--time-warning PERCENT|DURATION] [--finalization-grace DURATION] [--thinking LEVEL] [--format text|json] [--cwd DIR]";
+  return "usage: pi-reviewer (--uncommitted | --base BRANCH | --commit SHA | INSTRUCTIONS) [--model PROVIDER/MODEL] [--model-manifest PATH] [--metrics-file PATH] [--session-dir DIR] [--session-receipt PATH] [--lifecycle-receipt PATH] [--no-session] [--max-model-requests N] [--time-budget DURATION] [--time-warning PERCENT|DURATION] [--finalization-grace DURATION] [--hard-finalization-grace DURATION] [--thinking LEVEL] [--format text|json] [--cwd DIR]";
 }

@@ -1,6 +1,6 @@
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { Type } from "typebox";
+import { Type, type TSchema } from "typebox";
 
 import { parseReviewOutput } from "./review-output.js";
 
@@ -29,7 +29,7 @@ const finding = Type.Object(
   { additionalProperties: false },
 );
 
-const reviewSubmissionSchema = Type.Object(
+export const reviewSubmissionSchema: TSchema = Type.Object(
   {
     findings: Type.Array(finding),
     overall_correctness: StringEnum(["patch is correct", "patch is incorrect"] as const),
@@ -55,11 +55,57 @@ export type ReviewSubmission = {
   readonly overall_confidence_score: number;
 };
 
-export function createSubmitReviewTool(
-  cwd: string,
-  onSubmit: (submission: ReviewSubmission) => void,
-): ToolDefinition {
-  let submitted = false;
+export class ReviewSubmissionGate {
+  private acceptedValue: ReviewSubmission | undefined;
+  private resolveAcceptance: (submission: ReviewSubmission) => void = () => undefined;
+  readonly accepted: Promise<ReviewSubmission>;
+
+  constructor(
+    private readonly cwd: string,
+    private readonly onAccepted?: (submission: ReviewSubmission) => void,
+  ) {
+    this.accepted = new Promise<ReviewSubmission>((resolve) => {
+      this.resolveAcceptance = resolve;
+    });
+  }
+
+  get submission(): ReviewSubmission | undefined {
+    return this.acceptedValue;
+  }
+
+  get acceptedCallCount(): number {
+    return this.acceptedValue === undefined ? 0 : 1;
+  }
+
+  accept(value: unknown): ReviewSubmission {
+    if (this.acceptedValue !== undefined) throw new Error("submit_review may be called only once");
+    const parsed = parseReviewOutput(JSON.stringify(value), this.cwd);
+    const normalized: ReviewSubmission = {
+      findings: parsed.findings.map((entry) => ({
+        title: entry.title,
+        body: entry.body,
+        confidence_score: entry.confidenceScore,
+        priority: entry.priority,
+        code_location: {
+          absolute_file_path: entry.codeLocation.absoluteFilePath,
+          line_range: {
+            start: entry.codeLocation.lineRange.start,
+            end: entry.codeLocation.lineRange.end,
+          },
+        },
+      })),
+      overall_correctness: parsed.overallCorrectness,
+      overall_explanation: parsed.overallExplanation,
+      overall_confidence_score: parsed.overallConfidenceScore,
+    };
+    this.acceptedValue = normalized;
+    this.onAccepted?.(normalized);
+    this.resolveAcceptance(normalized);
+    return normalized;
+  }
+}
+
+export function createSubmitReviewTool(gate: ReviewSubmissionGate): ToolDefinition {
   return defineTool({
     name: "submit_review",
     label: "Submit review",
@@ -72,13 +118,10 @@ export function createSubmitReviewTool(
     ],
     parameters: reviewSubmissionSchema,
     execute(_toolCallId, params) {
-      if (submitted) throw new Error("submit_review may be called only once");
-      parseReviewOutput(JSON.stringify(params), cwd);
-      submitted = true;
-      onSubmit(params);
+      const submission = gate.accept(params);
       return Promise.resolve({
         content: [{ type: "text" as const, text: "Final review submitted." }],
-        details: params,
+        details: submission,
         terminate: true,
       });
     },

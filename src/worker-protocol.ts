@@ -15,10 +15,12 @@ export type ReviewWorkerRequest = {
   readonly persistSession: boolean;
   readonly sessionDir: string;
   readonly sessionReceipt: string | null;
+  readonly lifecycleReceipt: string | null;
   readonly maxModelRequests: number | null;
   readonly timeBudgetMs: number;
   readonly warningRemainingMs: readonly number[];
   readonly finalizationGraceMs: number;
+  readonly hardFinalizationGraceMs: number;
   readonly thinking: ThinkingLevel;
   readonly tools: readonly string[];
 };
@@ -64,10 +66,12 @@ export function validateWorkerRequest(value: unknown): ReviewWorkerRequest {
     "persistSession",
     "sessionDir",
     "sessionReceipt",
+    "lifecycleReceipt",
     "maxModelRequests",
     "timeBudgetMs",
     "warningRemainingMs",
     "finalizationGraceMs",
+    "hardFinalizationGraceMs",
     "thinking",
     "tools",
   ]);
@@ -95,10 +99,15 @@ export function validateWorkerRequest(value: unknown): ReviewWorkerRequest {
     persistSession: requiredBoolean(value, "persistSession"),
     sessionDir: requiredString(value, "sessionDir"),
     sessionReceipt: optionalString(value["sessionReceipt"], "sessionReceipt"),
+    lifecycleReceipt: optionalString(value["lifecycleReceipt"], "lifecycleReceipt"),
     maxModelRequests: optionalRequestLimit(value["maxModelRequests"]),
     timeBudgetMs,
     warningRemainingMs,
     finalizationGraceMs: positiveMilliseconds(value["finalizationGraceMs"], "finalizationGraceMs"),
+    hardFinalizationGraceMs: positiveMilliseconds(
+      value["hardFinalizationGraceMs"],
+      "hardFinalizationGraceMs",
+    ),
     thinking: thinkingLevel(value["thinking"]),
     tools,
   };

@@ -110,9 +110,11 @@ pi-reviewer --base main --format json --metrics-file ./review-metrics.json > rev
 
 Every review saves a native Pi JSONL session under `~/.local/state/pi-reviewer/sessions`. Sessions preserve messages, tool calls, tool results, model errors, and usage for later debugging, resume workflows, audits, or training-data preparation. They can contain reviewed source code and tool output, so protect and retain them like the repository itself.
 
-Integrations can isolate a run with `--session-dir DIR` and request a mode-0600 receipt with `--session-receipt PATH`. The receipt contains only Pi's generated session-file path. Use `--no-session` only when persistence is deliberately unwanted; it cannot be combined with either session-output option.
+Integrations can isolate a run with `--session-dir DIR` and request private receipts with `--session-receipt PATH` and `--lifecycle-receipt PATH`. The session receipt records the native session path, mode, byte count, entry count, and SHA-256 checksum. The lifecycle receipt records redacted phase, branch, request, usage, and cleanup evidence. It does not contain prompts, source text, assistant text, tool arguments, request headers, or credentials. Use `--no-session` only when persistence is deliberately unwanted; it cannot be combined with session output options.
 
-Pi Reviewer treats time limits as an exploration budget rather than an immediate process kill. The default budget is 10 minutes with reminders at 50% and 25% remaining, followed by at most two minutes for final submission. Configure a run with repeatable percentage or duration warnings:
+Pi Reviewer treats the time limit as an exploration budget. The default run gives the model 10 minutes to investigate, with reminders at 50% and 25% remaining. It then gives the model up to two minutes to submit through a normal Pi turn. If that turn does not submit, Pi Reviewer makes one provider request with reasoning off and `submit_review` forced. The hard request gets a separate full two-minute limit.
+
+Configure the three phase limits and repeatable warnings as needed:
 
 ```bash
 pi-reviewer --base main \
@@ -120,10 +122,13 @@ pi-reviewer --base main \
   --time-warning 50% \
   --time-warning 10m \
   --time-warning 5m \
-  --finalization-grace 10m
+  --finalization-grace 10m \
+  --hard-finalization-grace 2m
 ```
 
-Explicit warnings replace the defaults. When the exploration budget ends, Pi Reviewer clears pending reminders, disables reasoning, and tells the review guard to block every tool except `submit_review`. The configured tool list stays unchanged, so finalization does not rebuild the system prompt. The provider decides whether to reuse the unchanged prompt prefix. Pi Reviewer then queues a typed `submit_review` request before asking the active operation to stop. This lets the same Pi session deliver finalization if the provider returns while cancellation is still pending. If cancellation reaches idle first, Pi Reviewer prompts directly. If that direct final-submission request is still pending halfway through the remaining grace period, Pi Reviewer queues one retry before cancelling the stalled request, then prompts directly again when cancellation reaches idle. Investigation and finalization share one monotonic timeline, so transition and retry work cannot move the final deadline. At 12 minutes under the defaults, model execution stops and the worker flushes its session and metrics. A worker that has not exited 30 seconds later is force-killed as a complete process group; those 30 seconds are cleanup time, not review time.
+Explicit warnings replace the defaults. Before each finalization phase, Pi Reviewer clears queued messages, aborts the prior turn, and waits for Pi to report that the session is idle. Soft finalization keeps the selected thinking level, system prompt, context, and full ordered tool list. The review guard blocks all tool execution except `submit_review` without changing that list.
+
+Hard finalization runs only when soft finalization does not submit. Pi Reviewer keeps the failed soft branch in the native session, restores the branch point saved before soft finalization, and sends one direct request with the same prompt prefix and full tools. The request disables reasoning, forces the named `submit_review` tool, and has no automatic retry. One submission gate accepts at most one valid review across all phases. Pi Reviewer reports provider cache reuse only when the provider returns a cache-read count.
 
 `--max-model-requests N` uses the same finalization path after the Nth complete model response. Time and request limits cannot start competing finalization turns. Final review output must come through `submit_review`; raw JSON or prose is not accepted as a second submission protocol.
 

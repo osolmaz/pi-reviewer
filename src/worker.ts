@@ -3,9 +3,11 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+import type { AssistantMessage, Tool, TSchema } from "@earendil-works/pi-ai";
 import {
   createAgentSession,
   createEventBus,
+  convertToLlm,
   DefaultResourceLoader,
   ModelRuntime,
   SessionManager,
@@ -14,19 +16,25 @@ import {
   type EventBus,
 } from "@earendil-works/pi-coding-agent";
 
-import { enterReviewFinalization } from "./finalization.js";
+import { runForcedSubmissionTurn } from "./forced-submission-turn.js";
+import { finalizeSessionReceipt, LifecycleEvidence, structuralHash } from "./lifecycle-receipt.js";
 import {
   canonicalModelsStorePath,
   registerHuggingFaceOAuthProvider,
 } from "./huggingface-provider.js";
-import { runReviewWithBudget } from "./review-budget.js";
-import { createSubmitReviewTool, type ReviewSubmission } from "./submit-review.js";
+import { runThreePhaseReview, type ReviewControllerResult } from "./review-controller.js";
+import { ReviewLifecycle } from "./review-lifecycle.js";
+import {
+  ReviewSubmissionGate,
+  createSubmitReviewTool,
+  type ReviewSubmission,
+} from "./submit-review.js";
 import { terminalText } from "./terminal-text.js";
 import { readWorkerRequest, type ReviewWorkerRequest } from "./worker-protocol.js";
 
 type ReviewWorkerExecution = {
   readonly subscribe: (listener: (event: AgentSessionEvent) => void) => () => void;
-  readonly prompt: (prompt: string) => Promise<void>;
+  readonly prompt: (prompt: string) => Promise<ReviewControllerResult>;
   readonly submission: () => ReviewSubmission | undefined;
   readonly dispose: () => void;
   readonly flush: () => Promise<void>;
@@ -36,25 +44,43 @@ type ReviewWorkerExecutionFactory = (
   request: ReviewWorkerRequest,
 ) => Promise<ReviewWorkerExecution>;
 
+// eslint-disable-next-line complexity -- Keep durable flush and forced-exit ordering in one worker boundary.
 export async function runReviewWorker(
   request: ReviewWorkerRequest,
   createExecution: ReviewWorkerExecutionFactory = createDefaultExecution,
 ): Promise<void> {
   const execution = await createExecution(request);
   const unsubscribe = execution.subscribe(writeEvent);
+  let result: ReviewControllerResult | undefined;
+  let failure: Error | undefined;
   try {
     writeJson({ type: "review_started" });
-    await execution.prompt(request.prompt);
+    result = await execution.prompt(request.prompt);
     const submission = execution.submission();
-    if (submission === undefined) throw new Error("review completed without submit_review");
-    writeJson({ type: "review_submission", review: submission });
+    if (submission !== undefined) writeJson({ type: "review_submission", review: submission });
+    if (result.error !== undefined) failure = result.error;
+    else if (submission === undefined)
+      failure = new Error("review completed without submit_review");
+  } catch (error) {
+    failure = asError(error);
   } finally {
     unsubscribe();
     execution.dispose();
     await execution.flush();
   }
+  if (result?.forcedExitRequired === true) {
+    writeJson({
+      type: "shutdown_ready",
+      forcedExitRequired: true,
+      error: failure?.message ?? "hard finalization transport did not settle",
+    });
+    await new Promise<void>(() => undefined);
+  }
+  if (failure !== undefined) throw failure;
 }
 
+// The setup stays linear so the reviewed Pi resources and lifecycle wiring are visible together.
+// eslint-disable-next-line max-lines-per-function -- Keep the reviewed Pi resources and lifecycle wiring visible together.
 export async function createDefaultExecution(
   request: ReviewWorkerRequest,
 ): Promise<ReviewWorkerExecution> {
@@ -87,10 +113,10 @@ export async function createDefaultExecution(
   }
 
   const sessionManager = createReviewSessionManager(request);
-  let submission: ReviewSubmission | undefined;
-  const submitReview = createSubmitReviewTool(request.cwd, (value) => {
-    submission = value;
-  });
+  const lifecycle = new ReviewLifecycle();
+  const evidence = new LifecycleEvidence(lifecycle, request.lifecycleReceipt);
+  const gate = new ReviewSubmissionGate(request.cwd);
+  const submitReview = createSubmitReviewTool(gate);
   const { session } = await createAgentSession({
     cwd: request.cwd,
     agentDir: request.configDir,
@@ -103,32 +129,91 @@ export async function createDefaultExecution(
     settingsManager,
     sessionManager,
   });
+  const directListeners = new Set<(event: AgentSessionEvent) => void>();
+  const unsubscribeEvidence = session.subscribe((event) => {
+    if (event.type === "message_end" && event.message.role === "assistant") {
+      evidence.recordAssistant(event.message);
+    }
+  });
+  const hardTools: Tool[] = session.state.tools.map((tool) => {
+    const parameters: unknown = tool.parameters;
+    return {
+      name: tool.name,
+      description: tool.description,
+      parameters: parameters as TSchema,
+    };
+  });
+  const stableSystemPrompt = session.systemPrompt;
+
   return {
-    subscribe: (listener) => session.subscribe(listener),
-    prompt: async (prompt) => {
-      await runReviewWithBudget(
-        session,
-        prompt,
-        {
-          timeBudgetMs: request.timeBudgetMs,
-          warningRemainingMs: request.warningRemainingMs,
-          finalizationGraceMs: request.finalizationGraceMs,
-        },
-        request.maxModelRequests,
-        () => submission !== undefined,
-        {
-          enterFinalization: () => {
-            enterReviewFinalization(session, eventBus);
-          },
-        },
-      );
+    subscribe: (listener) => {
+      directListeners.add(listener);
+      const unsubscribe = session.subscribe(listener);
+      return () => {
+        directListeners.delete(listener);
+        unsubscribe();
+      };
     },
-    submission: () => submission,
+    prompt: async (prompt) =>
+      await runThreePhaseReview(
+        {
+          session,
+          sessionManager,
+          eventBus,
+          policy: {
+            timeBudgetMs: request.timeBudgetMs,
+            warningRemainingMs: request.warningRemainingMs,
+            finalizationGraceMs: request.finalizationGraceMs,
+            hardFinalizationGraceMs: request.hardFinalizationGraceMs,
+          },
+          maxModelRequests: request.maxModelRequests,
+          gate,
+          lifecycle,
+          evidence,
+          recordStablePrefix: (preSoftLeafId, finalizationPrompt) => {
+            if (sessionManager.getLeafId() !== preSoftLeafId) {
+              throw new Error("review session moved before soft finalization");
+            }
+            evidence.setStructuralHashes({
+              systemPrompt: structuralHash(stableSystemPrompt),
+              contextPrefix: structuralHash(
+                convertToLlm(sessionManager.buildSessionContext().messages),
+              ),
+              finalizationPrompt: structuralHash(finalizationPrompt),
+              orderedTools: structuralHash(hardTools),
+            });
+          },
+          hardFinalize: async (preSoftLeafId, finalizationPrompt) =>
+            await runForcedSubmissionTurn({
+              modelRuntime,
+              model,
+              sessionManager,
+              preSoftLeafId,
+              systemPrompt: stableSystemPrompt,
+              tools: hardTools,
+              finalizationPrompt,
+              gate,
+              evidence,
+              deadlineMs: request.hardFinalizationGraceMs,
+              sessionId: session.sessionId,
+              onAssistant: (message) => {
+                evidence.recordAssistant(message);
+                emitDirectAssistant(directListeners, message);
+              },
+            }),
+        },
+        prompt,
+      ),
+    submission: () => gate.submission,
     dispose: () => {
+      unsubscribeEvidence();
       session.dispose();
     },
     flush: async () => {
       await settingsManager.flush();
+      await finalizeSessionReceipt(request.sessionReceipt, sessionManager.getSessionFile());
+      lifecycle.record({ kind: "session_flushed" });
+      await evidence.flush();
     },
   };
 }
@@ -179,6 +264,14 @@ function createInitializedSessionManager(cwd: string, sessionDir: string): Sessi
   }
 }
 
+function emitDirectAssistant(
+  listeners: ReadonlySet<(event: AgentSessionEvent) => void>,
+  message: AssistantMessage,
+): void {
+  const event = { type: "message_end", message } satisfies AgentSessionEvent;
+  for (const listener of listeners) listener(event);
+}
+
 function writeEvent(event: AgentSessionEvent): void {
   if (event.type === "message_end") {
     writeJson(workerMessagePayload(event.message));
@@ -201,13 +294,15 @@ function writeJson(value: Readonly<Record<string, unknown>>): void {
   process.stdout.write(`${JSON.stringify(value)}\n`);
 }
 
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 async function main(): Promise<void> {
   try {
     await runReviewWorker(await readWorkerRequest());
   } catch (error) {
-    process.stderr.write(
-      `${terminalText(error instanceof Error ? error.message : String(error))}\n`,
-    );
+    process.stderr.write(`${terminalText(asError(error).message)}\n`);
     process.exitCode = 1;
   }
 }
