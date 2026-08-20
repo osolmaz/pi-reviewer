@@ -210,6 +210,8 @@ describe("review lifecycle", () => {
     );
     expect(result.forcedExitRequired).toBe(false);
     expect(result.error?.message).toBe("hard failure");
+    expect(JSON.stringify(evidence.snapshot())).not.toContain("hard failure");
+    expect(JSON.stringify(evidence.snapshot())).toContain("hard_finalization_failed");
     expect(hardFinalize).toHaveBeenCalledOnce();
     expect(calls).toEqual([
       "prompt:explore",

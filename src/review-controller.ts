@@ -95,14 +95,19 @@ export async function runThreePhaseReview(
 
   const preSoftLeafId = input.sessionManager.getLeafId();
   if (preSoftLeafId === null) {
-    return failAndFinish(input, new Error("review session has no pre-soft leaf"), false);
+    return failAndFinish(
+      input,
+      new Error("review session has no pre-soft leaf"),
+      false,
+      "missing_pre_soft_leaf",
+    );
   }
   input.evidence.setBranches(preSoftLeafId);
   const finalizationPrompt = reviewFinalizationPrompt(reason);
   try {
     input.recordStablePrefix(preSoftLeafId, finalizationPrompt);
   } catch (error) {
-    return failAndFinish(input, asError(error), false);
+    return failAndFinish(input, asError(error), false, "prefix_evidence_failed");
   }
   input.lifecycle.transition("soft_finalizing", reason);
   input.eventBus.emit(REVIEW_PHASE_EVENT, "soft_finalizing");
@@ -138,10 +143,15 @@ export async function runThreePhaseReview(
   try {
     hard = await input.hardFinalize(preSoftLeafId, finalizationPrompt);
   } catch (error) {
-    return failAndFinish(input, asError(error), false);
+    return failAndFinish(input, asError(error), false, "hard_finalization_exception");
   }
   if (hard.kind === "accepted") return await finishAccepted(input, "hard_submission");
-  return failAndFinish(input, hard.error, hard.forcedExitRequired);
+  return failAndFinish(
+    input,
+    hard.error,
+    hard.forcedExitRequired,
+    hard.forcedExitRequired ? "hard_transport_unsettled" : "hard_finalization_failed",
+  );
 }
 
 async function finishAccepted(
@@ -171,7 +181,7 @@ async function quiesce(
     await quiesceReviewSession(input.session, input.lifecycle);
     return undefined;
   } catch (error) {
-    return failAndFinish(input, new Error(reason, { cause: error }), false);
+    return failAndFinish(input, new Error(reason, { cause: error }), false, reason);
   }
 }
 
@@ -179,8 +189,9 @@ function failAndFinish(
   input: ReviewControllerInput,
   error: Error,
   forcedExitRequired: boolean,
+  receiptReason: string,
 ): ReviewControllerResult {
-  input.lifecycle.tryFail(error.message);
+  input.lifecycle.tryFail(receiptReason);
   input.lifecycle.transition(
     "shutdown_ready",
     forcedExitRequired ? "parent_sigterm_required" : "failed_complete",
