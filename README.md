@@ -140,7 +140,7 @@ pi-reviewer --base main \
   --hard-finalization-grace 2m
 ```
 
-Explicit warnings replace the defaults. Before each finalization phase, pi-reviewer clears queued messages, aborts the prior turn, and waits for Pi to report that the session is idle. Soft finalization keeps the selected thinking level, system prompt, context, and full ordered tool list. The review guard blocks all tool execution except `submit_review` without changing that list.
+Explicit warnings replace the defaults. Before each finalization phase, pi-reviewer clears queued messages, aborts the prior turn, and waits up to one minute for Pi to report that the session is idle. Soft finalization keeps the selected thinking level, system prompt, context, and full ordered tool list. The review guard blocks all tool execution except `submit_review` without changing that list.
 
 Hard finalization runs only when soft finalization does not submit. pi-reviewer keeps the failed soft branch in the native session, restores the branch point saved before soft finalization, and sends one direct request with the same prompt prefix and full tools. The request disables reasoning, forces the named `submit_review` tool, and has no automatic retry. One submission gate accepts at most one valid review across all phases. pi-reviewer reports provider cache reuse only when the provider returns a cache-read count.
 

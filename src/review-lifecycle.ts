@@ -2,7 +2,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 
 import { formatDuration } from "./review-budget.js";
 
-export const REVIEW_QUIESCENCE_ALLOWANCE_MS = 30_000;
+export const REVIEW_QUIESCENCE_ALLOWANCE_MS = 60_000;
 export const HARD_CANCELLATION_ALLOWANCE_MS = 30_000;
 
 export const REVIEW_PHASE_EVENT = "pi-reviewer:phase";
@@ -140,18 +140,26 @@ export async function quiesceReviewSession(
   });
   lifecycle.record({ kind: "abort_requested" });
 
+  let acceptingEvents = true;
+  const canRecordEvents = () => acceptingEvents;
   const settlement = session.abort().then(async () => {
+    if (!canRecordEvents()) return;
     lifecycle.record({ kind: "abort_settled" });
     await session.waitForIdle();
+    if (!canRecordEvents()) return;
     if (!session.isIdle) throw new Error("Pi session reported non-idle after waitForIdle");
     lifecycle.record({ kind: "idle_confirmed" });
   });
 
-  await withDeadline(
-    settlement,
-    allowanceMs,
-    `review session did not become idle within ${formatDuration(allowanceMs)}`,
-  );
+  try {
+    await withDeadline(
+      settlement,
+      allowanceMs,
+      `review session did not become idle within ${formatDuration(allowanceMs)}`,
+    );
+  } finally {
+    acceptingEvents = false;
+  }
 }
 
 export async function waitForReviewIdle(

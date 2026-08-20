@@ -57,7 +57,7 @@ describe("review time policy", () => {
       finalizationGraceMs: 2 * 60_000,
       hardFinalizationGraceMs: 2 * 60_000,
     });
-    expect(workerWatchdogTimeoutMs(defaults)).toBe(16 * 60_000);
+    expect(workerWatchdogTimeoutMs(defaults)).toBe(17 * 60_000);
   });
 
   it("rejects duplicate and invalid phase budgets", () => {

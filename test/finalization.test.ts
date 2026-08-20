@@ -12,6 +12,7 @@ import { runThreePhaseReview } from "../src/review-controller.js";
 import {
   quiesceReviewSession,
   REVIEW_PHASE_EVENT,
+  REVIEW_QUIESCENCE_ALLOWANCE_MS,
   ReviewLifecycle,
 } from "../src/review-lifecycle.js";
 import { ReviewSubmissionGate } from "../src/submit-review.js";
@@ -135,6 +136,40 @@ describe("review lifecycle", () => {
     ]);
   });
 
+  it("allows provider abort settlement beyond the old 30-second boundary", async () => {
+    vi.useFakeTimers();
+    let idle = false;
+    const lifecycle = new ReviewLifecycle();
+    lifecycle.transition("quiescing_before_soft", "deadline");
+    const quiescence = quiesceReviewSession(
+      {
+        clearQueue: () => ({ steering: [], followUp: [] }),
+        abort: () =>
+          new Promise<void>((resolve) => {
+            setTimeout(() => {
+              idle = true;
+              resolve();
+            }, 30_001);
+          }),
+        waitForIdle: () => Promise.resolve(),
+        get isIdle() {
+          return idle;
+        },
+      },
+      lifecycle,
+    );
+
+    expect(REVIEW_QUIESCENCE_ALLOWANCE_MS).toBe(60_000);
+    await vi.advanceTimersByTimeAsync(30_001);
+    await expect(quiescence).resolves.toBeUndefined();
+    expect(lifecycle.events.map((event) => event.kind)).toEqual([
+      "queue_cleared",
+      "abort_requested",
+      "abort_settled",
+      "idle_confirmed",
+    ]);
+  });
+
   it("fails bounded quiescence when abort settlement is ignored", async () => {
     vi.useFakeTimers();
     const lifecycle = new ReviewLifecycle();
@@ -152,6 +187,33 @@ describe("review lifecycle", () => {
     const rejection = expect(quiescence).rejects.toThrow("did not become idle");
     await vi.advanceTimersByTimeAsync(1_000);
     await rejection;
+  });
+
+  it("ignores abort events that settle after bounded quiescence fails", async () => {
+    vi.useFakeTimers();
+    const lifecycle = new ReviewLifecycle();
+    lifecycle.transition("quiescing_before_soft", "deadline");
+    const quiescence = quiesceReviewSession(
+      {
+        clearQueue: () => ({ steering: [], followUp: [] }),
+        abort: () =>
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, 1_001);
+          }),
+        waitForIdle: () => Promise.resolve(),
+        isIdle: true,
+      },
+      lifecycle,
+      1_000,
+    );
+    const rejection = expect(quiescence).rejects.toThrow("did not become idle");
+    await vi.advanceTimersByTimeAsync(1_000);
+    await rejection;
+    await vi.advanceTimersByTimeAsync(1);
+    expect(lifecycle.events.map((event) => event.kind)).toEqual([
+      "queue_cleared",
+      "abort_requested",
+    ]);
   });
 
   it("runs hard finalization only after both idle confirmations", async () => {

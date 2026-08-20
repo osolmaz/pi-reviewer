@@ -151,7 +151,11 @@ At an exploration finalization trigger, the controller:
 3. Saves the trigger reason.
 4. Calls `session.abort()` without first queuing a finalization message.
 5. Waits for the real session to report idle.
-6. Fails if quiescence does not finish within its allowance.
+6. Fails if quiescence does not finish within its 60-second allowance.
+
+The 60-second allowance leaves margin beyond the 30-second provider abort boundary observed in the
+Immich Qwen canary. If the allowance expires, later abort or idle settlement does not append
+lifecycle events after the terminal transition.
 
 ### Soft finalization
 
@@ -366,8 +370,9 @@ Add or update these tests before any live canary:
    model data, file mode, checksum, byte count, and entry count.
 9. Lifecycle-receipt tests for schema, timestamp order, metric reconciliation, structural hashes,
    terminal completeness, and absence of credentials or unique prompt markers.
-10. Cancellation tests for immediate settlement, delayed settlement inside the allowance, ignored
-    abort, late rejection, parent `SIGTERM`, and watchdog non-use.
+10. Cancellation tests for immediate settlement, settlement after the old 30-second boundary,
+    delayed settlement inside the allowance, ignored abort, late settlement without lifecycle
+    events, late rejection, parent `SIGTERM`, and watchdog non-use.
 11. A token-limit test based on measured valid review sizes.
 12. Compatibility tests against the exact pinned Pi and Pi AI versions.
 
