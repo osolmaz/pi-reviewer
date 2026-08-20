@@ -55,6 +55,14 @@ export async function loginReviewerApp(
   createRuntime: RuntimeFactory = defaultRuntimeFactory,
   providerOwnsAuthentication: ProviderAuthenticationOwner = inheritedProviderOwnsAuthentication,
 ): Promise<void> {
+  if (
+    requestedProvider !== undefined &&
+    (await providerOwnsAuthentication(app, requestedProvider))
+  ) {
+    throw new Error(
+      `Authentication for ${requestedProvider} is managed by the selected provider in the main Pi profile.`,
+    );
+  }
   const config = await writePiRuntimeConfig(app);
   const runtime = await createRuntime({
     authPath: regularPiAuthPath(),
@@ -62,7 +70,7 @@ export async function loginReviewerApp(
   });
   const providers = loginProviders(runtime.getProviders());
   const provider = await selectProvider(providers, requestedProvider, terminal);
-  if (await providerOwnsAuthentication(app, provider.id)) {
+  if (requestedProvider === undefined && (await providerOwnsAuthentication(app, provider.id))) {
     throw new Error(
       `Authentication for ${provider.name} is managed by the selected provider in the main Pi profile.`,
     );

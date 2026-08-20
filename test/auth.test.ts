@@ -93,21 +93,16 @@ describe("Pi Reviewer authentication", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "pi-reviewer-provider-auth-"));
     cleanup.push(root);
     const app = await loadReviewerApp(appOptions);
-    const login = vi.fn(() => Promise.resolve({}));
+    const createRuntime = vi.fn(() =>
+      Promise.resolve({
+        getProviders: () => [],
+        login: vi.fn(() => Promise.resolve({})),
+      }),
+    );
     await expect(
-      loginReviewerApp(
-        app,
-        "managed",
-        terminal([]),
-        () =>
-          Promise.resolve({
-            getProviders: () => [{ id: "managed", name: "Managed", auth: { oauth: {} } }],
-            login,
-          }),
-        () => Promise.resolve(true),
-      ),
+      loginReviewerApp(app, "managed", terminal([]), createRuntime, () => Promise.resolve(true)),
     ).rejects.toThrow("managed by the selected provider");
-    expect(login).not.toHaveBeenCalled();
+    expect(createRuntime).not.toHaveBeenCalled();
   });
 
   it("resolves auth.json from the regular Pi home", () => {
