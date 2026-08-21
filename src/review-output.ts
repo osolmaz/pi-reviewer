@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { ReviewFinding, ReviewOutput } from "./types.js";
+import { MAX_FINDING_TITLE_CHARACTERS, type ReviewFinding, type ReviewOutput } from "./types.js";
 
 export function parseReviewOutput(text: string, cwd?: string): ReviewOutput {
   const raw = extractSingleObject(text);
@@ -32,7 +32,9 @@ function parseFinding(value: unknown, index: number, cwd: string | undefined): R
     throw new Error(`${label}.priority must be 0, 1, 2, or 3`);
   }
   const title = nonemptyString(value["title"], `${label}.title`);
-  if (title.length > 80) throw new Error(`${label}.title exceeds 80 characters`);
+  if (Array.from(title).length > MAX_FINDING_TITLE_CHARACTERS) {
+    throw new Error(`${label}.title exceeds ${String(MAX_FINDING_TITLE_CHARACTERS)} characters`);
+  }
   assertTitlePriority(title, priority, label);
   return {
     title,

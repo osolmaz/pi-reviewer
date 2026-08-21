@@ -31,8 +31,9 @@ Copied material:
 Local changes:
 
 - The system prompt tells the model to use pi-reviewer's guarded `review_shell` tool.
-- Every finding must include a numeric P0 through P3 priority. Codex allows an omitted priority, but pi-reviewer requires one so terminal output is always prioritized.
-- Malformed output is a command failure. It is never treated as a clean review.
+- Every finding must include a numeric P0 through P3 priority. Codex allows an omitted priority. pi-reviewer infers it only from an exact `[P0]` through `[P3]` title prefix; otherwise it is required so terminal output is always prioritized.
+- pi-reviewer shortens finding titles longer than 80 Unicode characters before schema validation. The full finding body and raw assistant call remain unchanged.
+- Other malformed output is a command failure. It is never treated as a clean review.
 - pi-reviewer uses a fresh pi-factory app process instead of a Codex child task.
 - Model selection comes from `--model` or pi-reviewer's user config. The review extension contains no model identifier.
 - Repository inspection uses a smaller read-only tool set and rejects shell operators, network clients, mutation attempts and paths outside the checkout.

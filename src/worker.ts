@@ -100,7 +100,9 @@ export async function createDefaultExecution(
   const sessionManager = createReviewSessionManager(request);
   const lifecycle = new ReviewLifecycle();
   const evidence = new LifecycleEvidence(lifecycle, request.lifecycleReceipt);
-  const gate = new ReviewSubmissionGate(request.cwd);
+  const gate = new ReviewSubmissionGate(request.cwd, undefined, (normalization) => {
+    evidence.recordSubmissionNormalization(normalization);
+  });
   const submitReview = createSubmitReviewTool(gate);
   const { session } = await createAgentSession({
     cwd: request.cwd,

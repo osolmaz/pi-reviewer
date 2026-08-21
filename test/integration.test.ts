@@ -270,7 +270,18 @@ setInterval(() => {}, 1000);
     const localLine =
       "* Use `review_shell` for read-only Git and repository inspection commands. Shell pipelines, redirection, network access, and mutation are unavailable.\n";
     const submissionBlock = `\nPI REVIEWER SUBMISSION:\n\n* Call \`submit_review\` exactly once as your final action.\n* Pass the complete review object to \`submit_review\` using the schema above.\n* Do not return the final review as prose, a markdown fence, or raw JSON text.\n`;
-    const upstream = normalized.replace(localLine, "").replace(submissionBlock, "");
+    const upstream = normalized
+      .replace(localLine, "")
+      .replace(submissionBlock, "")
+      .replace(
+        'Additionally, include a required numeric priority field in the JSON output for each finding: set "priority" to 0 for P0, 1 for P1, 2 for P2, or 3 for P3. The numeric priority must match the [P0] through [P3] prefix in the title.',
+        'Additionally, include a numeric priority field in the JSON output for each finding: set "priority" to 0 for P0, 1 for P1, 2 for P2, or 3 for P3. If a priority cannot be determined, omit the field or use null.',
+      )
+      .replace(
+        '"title": "<≤ 80 chars including the [P#] prefix, imperative>"',
+        '"title": "<≤ 80 chars, imperative>"',
+      )
+      .replace('"priority": <int 0-3, required>', '"priority": <int 0-3, optional>');
     expect(createHash("sha256").update(upstream).digest("hex")).toBe(
       "ec60e7f36a1d1c2679ce095c0205ecc56f7dd8fb57707a13ef362072390f219f",
     );

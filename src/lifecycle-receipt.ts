@@ -9,6 +9,7 @@ import type {
   LifecycleTransition,
   ReviewLifecycle,
 } from "./review-lifecycle.js";
+import type { ReviewSubmissionNormalization } from "./submit-review.js";
 
 export type StructuralHashes = {
   readonly systemPrompt: string;
@@ -60,6 +61,7 @@ export type LifecycleReceipt = {
   readonly submission: {
     readonly acceptedCallCount: number;
     readonly acceptedAt?: string;
+    readonly normalization: ReviewSubmissionNormalization;
   };
   readonly terminal: {
     readonly complete: boolean;
@@ -76,6 +78,8 @@ export class LifecycleEvidence {
   private readonly responses: LifecycleReceipt["responses"][number][] = [];
   private acceptedCallCount = 0;
   private acceptedAt: string | undefined;
+  private titleTruncationCount = 0;
+  private priorityInferenceCount = 0;
   private forcedExitRequired = false;
   private complete = false;
 
@@ -115,6 +119,11 @@ export class LifecycleEvidence {
     this.acceptedAt ??= new Date().toISOString();
   }
 
+  recordSubmissionNormalization(normalization: ReviewSubmissionNormalization): void {
+    this.titleTruncationCount += normalization.titleTruncationCount;
+    this.priorityInferenceCount += normalization.priorityInferenceCount;
+  }
+
   markComplete(forcedExitRequired: boolean): void {
     this.complete = true;
     this.forcedExitRequired = forcedExitRequired;
@@ -135,6 +144,10 @@ export class LifecycleEvidence {
       submission: {
         acceptedCallCount: this.acceptedCallCount,
         ...(this.acceptedAt === undefined ? {} : { acceptedAt: this.acceptedAt }),
+        normalization: {
+          titleTruncationCount: this.titleTruncationCount,
+          priorityInferenceCount: this.priorityInferenceCount,
+        },
       },
       terminal: {
         complete: this.complete,

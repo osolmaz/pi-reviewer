@@ -232,6 +232,31 @@ The gate:
 The registered `submit_review` tool remains the AgentSession entry point. Hard finalization calls the
 same gate directly after it validates the provider response.
 
+### Validation normalization amendment
+
+Provider schema support does not reliably enforce string-length limits. A valid hard response from
+Qwen contained one 127-character finding title and was rejected after the only provider request had
+completed. Earlier AgentSession evidence contained the same title-length failure and no other
+`submit_review` schema failure class.
+
+Use the public Pi `prepareArguments` hook before AgentSession tool validation. Use the same pure,
+non-mutating preparation function and public Pi `validateToolArguments` path inside the shared gate
+for direct hard calls. This keeps soft and hard conversion behavior equal.
+
+Preparation can make only these deterministic metadata repairs:
+
+- Shorten a title over 80 Unicode characters to 79 characters plus an ellipsis.
+- Infer a missing or null numeric priority only from an exact `[P0]` through `[P3]` title prefix.
+
+Keep all titles of 80 Unicode characters or fewer unchanged. Reject missing semantic content,
+conflicting priorities, invalid confidence scores, invalid or reversed ranges, unsafe paths, unknown
+fields, multiple calls, and actionable content outside the call. Do not add a repair request or
+retry.
+
+The native session preserves the raw assistant call. The accepted tool result and rendered output
+contain the normalized review. The lifecycle receipt records only redacted repair counts, never the
+original or normalized title text.
+
 ## Code changes
 
 ### Lifecycle and budgets
@@ -295,7 +320,8 @@ Add a mode-0600 lifecycle receipt with schema version 1. It records safe operati
 - Request dispatch, response-header, first-stream, last-stream, and settlement times when available.
 - Stream event counts and byte or character counts, without content.
 - Provider, model, response model, usage, and provider cache counters when supplied.
-- Submission acceptance and accepted-call count.
+- Submission acceptance, accepted-call count, and redacted title-truncation and priority-inference
+  counts.
 - Session flush, receipt flush, worker shutdown readiness, and parent termination mode.
 
 The receipt must not contain credentials, request headers, source text, prompt text, assistant text,
@@ -365,11 +391,14 @@ Add or update these tests before any live canary:
    size estimates cannot block dispatch and that a real provider context error fails after exactly
    one request.
 7. Submission-gate tests for a valid review, a valid empty review, missing calls, malformed calls,
-   duplicate calls, multiple calls, other tools, and prose-only output.
-8. Native JSONL tests for hard user, assistant, and tool-result order, parent IDs, usage, route and
-   model data, file mode, checksum, byte count, and entry count.
+   duplicate calls, multiple calls, other tools, prose-only output, title truncation, Unicode title
+   length, priority inference, conflicting priority, and AgentSession conversion parity.
+8. Native JSONL tests for hard user, assistant, and tool-result order, parent IDs, raw assistant
+   arguments, normalized tool-result details, usage, route and model data, file mode, checksum, byte
+   count, and entry count.
 9. Lifecycle-receipt tests for schema, timestamp order, metric reconciliation, structural hashes,
-   terminal completeness, and absence of credentials or unique prompt markers.
+   redacted normalization counts, terminal completeness, and absence of credentials, title text, or
+   unique prompt markers.
 10. Cancellation tests for immediate settlement, settlement after the old 30-second boundary,
     delayed settlement inside the allowance, ignored abort, late settlement without lifecycle
     events, late rejection, parent `SIGTERM`, and watchdog non-use.
@@ -416,6 +445,20 @@ hard phase.
 Stop after this one canary. A failed gate does not authorize an automatic retry, package release,
 adapter promotion, or broader benchmark run.
 
+## Validation-repair canary
+
+The lifecycle canary above remains historical evidence. After this amendment passes local checks,
+review, and CI, run one bounded production-graded Harbor trial for
+`immich-app-immich-pr-16893-d38f1f55f42d` with `Qwen/Qwen3.8-27B` through the Featherless Hugging
+Face Inference Providers route. The temporary model manifest must include
+`thinkingFormat: "qwen-chat-template"`.
+
+Use one task, one attempt, no automatic retry, and a reviewed ceiling below $5. Preserve the prior
+failed title-length canary. Require one accepted submission, no hard-request thinking, exactly one
+forced `submit_review` call if hard finalization runs, redacted normalization evidence, durable
+native session evidence, and no related active sandbox after cleanup. Record production grading but
+do not use this one case to promote the model or adapter.
+
 ## Acceptance criteria
 
 Implementation is ready for release consideration when:
@@ -434,7 +477,7 @@ Implementation is ready for release consideration when:
 - Normal timeout handling does not depend on watchdog `SIGKILL`.
 - Existing review output, metrics, route/model attestation, native session, and failure semantics
   remain valid.
-- Local checks, pi-reviewer review, CI, and the one-task canary pass.
+- Local checks, pi-reviewer review, CI, and the validation-repair canary pass.
 
 ## Verification
 

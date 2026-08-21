@@ -4,6 +4,8 @@ export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
 export const OUTPUT_FORMATS = ["text", "json"] as const;
 
+export const MAX_FINDING_TITLE_CHARACTERS = 80;
+
 export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
 
 export type TimeWarning =

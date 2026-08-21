@@ -201,5 +201,5 @@ export function reviewFinalizationPrompt(reason: FinalizationReason): string {
         : reason === "model_error"
           ? "The exploration request ended with a model error."
           : "The review ended without a structured submission.";
-  return `${cause} Investigation tools are disabled. Call submit_review with the best review supported by the evidence already gathered. Do not investigate further and do not return prose.`;
+  return `${cause} Investigation tools are disabled. Call submit_review with the best review supported by the evidence already gathered. Each title, including its [P#] prefix, must be at most 80 characters. Do not investigate further and do not return prose.`;
 }

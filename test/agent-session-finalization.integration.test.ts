@@ -92,6 +92,14 @@ async function waitForFirstDelta(session: AgentSession): Promise<void> {
   });
 }
 
+function firstSubmissionTitle(gate: ReviewSubmissionGate): string {
+  const submission = gate.submission;
+  if (submission === undefined) throw new Error("expected an accepted submission");
+  const finding = submission.findings[0];
+  if (finding === undefined) throw new Error("expected one finding");
+  return finding.title;
+}
+
 describe("real AgentSession queue and abort behavior", () => {
   it("continues a queued steer after abort and settles only after the continuation", async () => {
     const { session, faux, contexts } = await controlledSession();
@@ -135,7 +143,9 @@ describe("real AgentSession queue and abort behavior", () => {
       session.dispose();
     }
   }, 20_000);
+});
 
+describe("real AgentSession soft finalization", () => {
   it("uses the normal AgentSession loop for soft finalization with full tools and unchanged thinking", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "pi-reviewer-soft-session-"));
     cleanup.push(root);
@@ -166,7 +176,11 @@ describe("real AgentSession queue and abort behavior", () => {
       systemPrompt: "stable soft system prompt",
     });
     await loader.reload();
-    const gate = new ReviewSubmissionGate(root);
+    const longTitle = `[P1] ${"long title ".repeat(12)}`;
+    const normalizations: { titleTruncationCount: number; priorityInferenceCount: number }[] = [];
+    const gate = new ReviewSubmissionGate(root, undefined, (normalization) => {
+      normalizations.push(normalization);
+    });
     const sessionManager = SessionManager.inMemory(root);
     const requests: { tools: string[]; reasoning: unknown; finalUser: unknown }[] = [];
     faux.setResponses([
@@ -190,9 +204,20 @@ describe("real AgentSession queue and abort behavior", () => {
             id: "submit-soft",
             name: "submit_review",
             arguments: {
-              findings: [],
-              overall_correctness: "patch is correct",
-              overall_explanation: "No defect found.",
+              findings: [
+                {
+                  title: longTitle,
+                  body: "The changed branch drops the first result.",
+                  confidence_score: 0.9,
+                  priority: 1,
+                  code_location: {
+                    absolute_file_path: "src/run.ts",
+                    line_range: { start: 10, end: 11 },
+                  },
+                },
+              ],
+              overall_correctness: "patch is incorrect",
+              overall_explanation: "One defect remains.",
               overall_confidence_score: 0.9,
             },
           },
@@ -245,6 +270,11 @@ describe("real AgentSession queue and abort behavior", () => {
       );
       expect(result).toEqual({ forcedExitRequired: false });
       expect(gate.acceptedCallCount).toBe(1);
+      const normalizedTitle = firstSubmissionTitle(gate);
+      expect(normalizedTitle.endsWith("…")).toBe(true);
+      expect(Array.from(normalizedTitle)).toHaveLength(80);
+      expect(normalizations).toEqual([{ titleTruncationCount: 1, priorityInferenceCount: 0 }]);
+      expect(JSON.stringify(sessionManager.getBranch())).toContain(longTitle);
       expect(faux.state.callCount).toBe(2);
       expect(session.thinkingLevel).toBe("high");
       expect(session.getActiveToolNames()).toEqual(initialTools);

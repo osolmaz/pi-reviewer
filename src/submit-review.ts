@@ -1,8 +1,9 @@
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { StringEnum } from "@earendil-works/pi-ai";
+import { StringEnum, validateToolArguments, type Tool, type ToolCall } from "@earendil-works/pi-ai";
 import { Type, type TSchema } from "typebox";
 
 import { parseReviewOutput } from "./review-output.js";
+import { MAX_FINDING_TITLE_CHARACTERS } from "./types.js";
 
 const lineRange = Type.Object(
   {
@@ -14,7 +15,11 @@ const lineRange = Type.Object(
 
 const finding = Type.Object(
   {
-    title: Type.String({ minLength: 1, maxLength: 80 }),
+    title: Type.String({
+      minLength: 1,
+      maxLength: MAX_FINDING_TITLE_CHARACTERS,
+      description: "Finding title, including the [P0] through [P3] prefix",
+    }),
     body: Type.String({ minLength: 1 }),
     confidence_score: Type.Number({ minimum: 0, maximum: 1 }),
     priority: Type.Integer({ minimum: 0, maximum: 3 }),
@@ -39,6 +44,27 @@ export const reviewSubmissionSchema: TSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const submissionValidationTool: Tool = {
+  name: "submit_review",
+  description: "Validate the final code review",
+  parameters: reviewSubmissionSchema,
+};
+
+export type ReviewSubmissionNormalization = {
+  readonly titleTruncationCount: number;
+  readonly priorityInferenceCount: number;
+};
+
+type PreparedReviewSubmission = {
+  readonly value: unknown;
+  readonly normalization: ReviewSubmissionNormalization;
+};
+
+type MutableReviewSubmissionNormalization = {
+  titleTruncationCount: number;
+  priorityInferenceCount: number;
+};
+
 export type ReviewSubmission = {
   readonly findings: {
     readonly title: string;
@@ -55,6 +81,16 @@ export type ReviewSubmission = {
   readonly overall_confidence_score: number;
 };
 
+export function prepareReviewSubmission(value: unknown): PreparedReviewSubmission {
+  const prepared: unknown = structuredClone(value);
+  const normalization = { titleTruncationCount: 0, priorityInferenceCount: 0 };
+  if (!isRecord(prepared) || !Array.isArray(prepared["findings"])) {
+    return { value: prepared, normalization };
+  }
+  for (const finding of prepared["findings"]) prepareFinding(finding, normalization);
+  return { value: prepared, normalization };
+}
+
 export class ReviewSubmissionGate {
   private acceptedValue: ReviewSubmission | undefined;
   private resolveAcceptance: (submission: ReviewSubmission) => void = () => undefined;
@@ -63,6 +99,7 @@ export class ReviewSubmissionGate {
   constructor(
     private readonly cwd: string,
     private readonly onAccepted?: (submission: ReviewSubmission) => void,
+    private readonly onNormalized?: (normalization: ReviewSubmissionNormalization) => void,
   ) {
     this.accepted = new Promise<ReviewSubmission>((resolve) => {
       this.resolveAcceptance = resolve;
@@ -81,9 +118,27 @@ export class ReviewSubmissionGate {
     return this.acceptedValue !== undefined;
   }
 
+  prepare(value: unknown): unknown {
+    const prepared = prepareReviewSubmission(value);
+    if (
+      prepared.normalization.titleTruncationCount > 0 ||
+      prepared.normalization.priorityInferenceCount > 0
+    ) {
+      this.onNormalized?.(prepared.normalization);
+    }
+    return prepared.value;
+  }
+
   accept(value: unknown): ReviewSubmission {
     if (this.acceptedValue !== undefined) throw new Error("submit_review may be called only once");
-    const parsed = parseReviewOutput(JSON.stringify(value), this.cwd);
+    const prepared = this.prepare(value);
+    const validated: unknown = validateToolArguments(submissionValidationTool, {
+      type: "toolCall",
+      id: "submit-review-validation",
+      name: "submit_review",
+      arguments: prepared as Record<string, unknown>,
+    } satisfies ToolCall);
+    const parsed = parseReviewOutput(JSON.stringify(validated), this.cwd);
     const normalized: ReviewSubmission = {
       findings: parsed.findings.map((entry) => ({
         title: entry.title,
@@ -114,13 +169,16 @@ export function createSubmitReviewTool(gate: ReviewSubmissionGate): ToolDefiniti
     name: "submit_review",
     label: "Submit review",
     description:
-      "Submit the final code review in the required machine-readable schema and end the review. Use this exactly once as the final action.",
+      "Submit the final code review in the required machine-readable schema and end the review. Each title, including its [P0] through [P3] prefix, must be at most 80 characters. Use this exactly once as the final action.",
     promptSnippet: "Submit the final validated review and end the review",
     promptGuidelines: [
       "Use submit_review exactly once as the final action after gathering enough evidence.",
       "Call submit_review instead of returning the final review as prose or a JSON text block.",
     ],
     parameters: reviewSubmissionSchema,
+    prepareArguments(args) {
+      return gate.prepare(args) as ReviewSubmission;
+    },
     execute(_toolCallId, params) {
       const submission = gate.accept(params);
       return Promise.resolve({
@@ -130,4 +188,32 @@ export function createSubmitReviewTool(gate: ReviewSubmissionGate): ToolDefiniti
       });
     },
   });
+}
+
+function prepareFinding(value: unknown, normalization: MutableReviewSubmissionNormalization): void {
+  if (!isRecord(value) || typeof value["title"] !== "string") return;
+  const title = value["title"];
+  inferMissingPriority(value, title, normalization);
+  const characters = Array.from(title);
+  if (characters.length <= MAX_FINDING_TITLE_CHARACTERS) return;
+  value["title"] = `${characters.slice(0, MAX_FINDING_TITLE_CHARACTERS - 1).join("")}…`;
+  normalization.titleTruncationCount += 1;
+}
+
+function inferMissingPriority(
+  finding: Record<string, unknown>,
+  title: string,
+  normalization: MutableReviewSubmissionNormalization,
+): void {
+  if (finding["priority"] !== undefined && finding["priority"] !== null) return;
+  const titlePriority = /^\[P([0-3])\]\s/u.exec(title);
+  if (titlePriority === null) {
+    throw new Error("finding priority is required when the title has no [P0] through [P3] prefix");
+  }
+  finding["priority"] = Number(titlePriority[1]);
+  normalization.priorityInferenceCount += 1;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

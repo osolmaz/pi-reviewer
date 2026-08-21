@@ -82,7 +82,7 @@ afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((entry) => rm(entry, { recursive: true, force: true })));
 });
 
-function assistant(): AssistantMessage {
+function assistant(submission: unknown = SUBMISSION): AssistantMessage {
   return {
     role: "assistant",
     content: [
@@ -90,7 +90,7 @@ function assistant(): AssistantMessage {
         type: "toolCall",
         id: "call-1",
         name: "submit_review",
-        arguments: SUBMISSION,
+        arguments: submission as Record<string, unknown>,
       },
     ],
     api: MODEL.api,
@@ -266,6 +266,57 @@ describe("forced submission turn", () => {
       model: "review-model",
       responseModel: "served-review-model",
       usage: assistant().usage,
+    });
+  });
+
+  it("accepts one long-title hard call while preserving the raw assistant", async () => {
+    const { manager, preSoftLeafId, evidence } = await fixture();
+    const longTitle = `[P1] ${"hard finalization title ".repeat(6)}`;
+    const submission = {
+      findings: [
+        {
+          title: longTitle,
+          body: "The changed branch drops the first result.",
+          confidence_score: 0.9,
+          priority: 1,
+          code_location: {
+            absolute_file_path: "src/run.ts",
+            line_range: { start: 10, end: 11 },
+          },
+        },
+      ],
+      overall_correctness: "patch is incorrect",
+      overall_explanation: "One defect remains.",
+      overall_confidence_score: 0.9,
+    };
+    const message = assistant(submission);
+    const { runtime, dispatch } = runtimeWith(() => completedStream(message));
+    const gate = new ReviewSubmissionGate(manager.getCwd(), undefined, (normalization) => {
+      evidence.recordSubmissionNormalization(normalization);
+    });
+    const result = await runForcedSubmissionTurn({
+      modelRuntime: runtime,
+      model: MODEL,
+      sessionManager: manager,
+      preSoftLeafId,
+      systemPrompt: "system",
+      tools: TOOLS,
+      finalizationPrompt: "finalize",
+      gate,
+      evidence,
+      deadlineMs: 120_000,
+      sessionId: "session-1",
+    });
+
+    expect(result.kind).toBe("accepted");
+    expect(dispatch).toHaveBeenCalledOnce();
+    expect(JSON.stringify(manager.getBranch())).toContain(longTitle);
+    const normalizedTitle = gate.submission?.findings[0]?.title ?? "";
+    expect(Array.from(normalizedTitle)).toHaveLength(80);
+    expect(normalizedTitle.endsWith("…")).toBe(true);
+    expect(evidence.snapshot().submission.normalization).toEqual({
+      titleTruncationCount: 1,
+      priorityInferenceCount: 0,
     });
   });
 

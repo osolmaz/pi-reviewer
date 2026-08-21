@@ -44,6 +44,10 @@ describe("lifecycle evidence", () => {
       orderedTools: structuralHash(["read", "submit_review"]),
     });
     evidence.recordAcceptedSubmission();
+    evidence.recordSubmissionNormalization({
+      titleTruncationCount: 2,
+      priorityInferenceCount: 1,
+    });
     evidence.markComplete(false);
     await evidence.flush();
 
@@ -52,7 +56,10 @@ describe("lifecycle evidence", () => {
     expect(receipt).toMatchObject({
       version: 1,
       branches: { preSoftLeafId: "pre-soft", softBranchLeafId: "soft-leaf" },
-      submission: { acceptedCallCount: 1 },
+      submission: {
+        acceptedCallCount: 1,
+        normalization: { titleTruncationCount: 2, priorityInferenceCount: 1 },
+      },
       terminal: {
         complete: true,
         forcedExitRequired: false,
